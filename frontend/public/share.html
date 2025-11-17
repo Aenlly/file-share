@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+    <meta charset="UTF-8" />
+    <title>🔗 访问共享文件</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+</head>
+<body class="bg-gray-50">
+<div class="flex items-center justify-center min-h-screen px-4">
+    <div class="max-w-md w-full space-y-8 bg-white p-10 rounded-2xl shadow-lg">
+        <h2 class="text-2xl font-bold text-center">请输入访问码</h2>
+        <input id="codeInput" class="w-full px-4 py-3 border rounded-lg" placeholder="例如：ABC123"/>
+        <button onclick="verifyCode()" class="w-full bg-green-600 text-white py-3 rounded-lg">打开</button>
+        <div id="result" class="hidden mt-4"></div>
+    </div>
+</div>
+<script>
+    async function verifyCode() {
+        const code = document.getElementById('codeInput').value.trim().toUpperCase()
+        const res = await fetch(`/api/share/${code}`).then(r => r.json())
+        const result = document.getElementById('result')
+        if (res.error) {
+            result.innerHTML = `<p class="text-red-500">${res.error}</p>`
+        } else {
+            result.innerHTML = `
+        <h3 class="font-bold">📂 ${res.alias}</h3>
+        <ul class="space-y-1 mt-2">${res.files.map(f => `<li>📄 ${f}</li>`).join('')}</ul>
+        <a href="/api/share/${code}/download" class="inline-block mt-4 bg-blue-600 text-white px-4 py-2 rounded">📥 打包下载</a>
+      `
+        }
+        result.classList.remove('hidden')
+    }
+</script>
+</body>
+</html>

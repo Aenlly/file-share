@@ -1,0 +1,180 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+body {
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
+    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
+    sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+code {
+  font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New',
+    monospace;
+}
+
+.ant-layout {
+  min-height: 100vh;
+}
+
+.site-layout-content {
+  min-height: 280px;
+  padding: 24px;
+  background: #fff;
+}
+
+.logo {
+  height: 32px;
+  margin: 16px;
+  color: white;
+  font-size: 18px;
+  font-weight: bold;
+  text-align: center;
+}
+
+.page-header {
+  background: #fff;
+  padding: 16px 24px;
+  border-bottom: 1px solid #f0f0f0;
+  margin-bottom: 24px;
+}
+
+.file-list-item {
+  display: flex;
+  align-items: center;
+  padding: 8px 0;
+  border-bottom: 1px solid #f0f0f0;
+}
+
+.file-list-item:last-child {
+  border-bottom: none;
+}
+
+.file-icon {
+  margin-right: 12px;
+  font-size: 18px;
+  color: #1890ff;
+}
+
+.file-info {
+  flex: 1;
+}
+
+.file-name {
+  font-weight: 500;
+}
+
+.file-meta {
+  font-size: 12px;
+  color: #999;
+}
+
+.file-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.upload-area {
+  border: 2px dashed #d9d9d9;
+  border-radius: 6px;
+  padding: 40px;
+  text-align: center;
+  background: #fafafa;
+  margin-bottom: 24px;
+  cursor: pointer;
+  transition: border-color 0.3s;
+}
+
+.upload-area:hover {
+  border-color: #1890ff;
+}
+
+.upload-area.active {
+  border-color: #1890ff;
+  background: #f0f8ff;
+}
+
+.share-card {
+  margin-bottom: 16px;
+}
+
+.share-code {
+  font-family: monospace;
+  font-size: 18px;
+  font-weight: bold;
+  color: #1890ff;
+  letter-spacing: 2px;
+  text-align: center;
+  padding: 12px;
+  background: #f0f8ff;
+  border-radius: 4px;
+  margin: 12px 0;
+}
+
+.login-container {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 100vh;
+  background: linear-gradient(135deg, #1890ff 0%, #722ed1 100%);
+  padding: 20px;
+  box-sizing: border-box;
+}
+
+.login-form {
+  width: 400px;
+  max-width: 100%;
+  padding: 40px;
+  background: white;
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+.login-title {
+  text-align: center;
+  margin-bottom: 32px;
+  font-size: 24px;
+  font-weight: bold;
+  color: #1890ff;
+}
+
+/* 移动端适配 */
+@media (max-width: 768px) {
+  .login-form {
+    padding: 20px;
+  }
+  
+  .login-title {
+    font-size: 20px;
+    margin-bottom: 20px;
+  }
+}
+
+.guest-container {
+  max-width: 800px;
+  margin: 0 auto;
+  padding: 24px;
+}
+
+.guest-header {
+  text-align: center;
+  margin-bottom: 32px;
+}
+
+.guest-title {
+  font-size: 24px;
+  font-weight: bold;
+  margin-bottom: 16px;
+}
+
+.guest-info {
+  color: #666;
+  margin-bottom: 24px;
+}
+
+.download-all-btn {
+  margin-bottom: 24px;
+}
