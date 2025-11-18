@@ -23,8 +23,28 @@ class Share {
     static create(shareData) {
         const shares = this.getAll();
         
-        // 生成随机访问码
-        const code = Math.random().toString(36).substr(2, 6).toUpperCase();
+        // 生成随机访问码（包含大小写字母和数字，区分大小写）
+        const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+        let code = '';
+        let attempts = 0;
+        const maxAttempts = 100;
+        
+        // 确保生成的访问码不重复
+        do {
+            code = '';
+            for (let i = 0; i < 6; i++) {
+                code += chars.charAt(Math.floor(Math.random() * chars.length));
+            }
+            attempts++;
+            
+            // 如果尝试次数过多，增加访问码长度
+            if (attempts >= maxAttempts) {
+                for (let i = 6; i < 8; i++) {
+                    code += chars.charAt(Math.floor(Math.random() * chars.length));
+                }
+                break;
+            }
+        } while (shares.some(s => s.code === code));
         const expireTime = Date.now() + (shareData.expireInMs || 86400000); // 默认24小时
         
         const newShare = {

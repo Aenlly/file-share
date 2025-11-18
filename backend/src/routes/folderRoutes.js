@@ -30,15 +30,38 @@ const upload = multer({
     fileFilter: (req, file, cb) => {
         // 处理文件名编码，确保UTF-8
         try {
+            let originalName = file.originalname;
+            
             // 如果文件名是Buffer，转换为UTF-8字符串
-            if (Buffer.isBuffer(file.originalname)) {
-                file.originalname = file.originalname.toString('utf8');
+            if (Buffer.isBuffer(originalName)) {
+                originalName = originalName.toString('utf8');
             }
-            // 如果文件名包含非ASCII字符，确保使用UTF-8编码
-            else if (/[^\\x00-\\x7F]/.test(file.originalname)) {
-                // 使用Buffer.from确保UTF-8编码
-                file.originalname = Buffer.from(file.originalname, 'utf8').toString('utf8');
+            // 如果文件名包含非ASCII字符，尝试修复编码
+            else if (/[^\\x00-\\x7F]/.test(originalName)) {
+                // 检查是否已经是正确的UTF-8
+                try {
+                    // 尝试将字符串编码为Buffer再解码，验证是否为有效UTF-8
+                    const testBuffer = Buffer.from(originalName, 'utf8');
+                    const testString = testBuffer.toString('utf8');
+                    if (testString === originalName) {
+                        // 已经是有效的UTF-8，不需要转换
+                        originalName = testString;
+                    } else {
+                        // 可能是其他编码被错误解释为UTF-8，尝试修复
+                        originalName = Buffer.from(originalName, 'latin1').toString('utf8');
+                    }
+                } catch (e) {
+                    // 如果验证失败，尝试修复
+                    try {
+                        originalName = Buffer.from(originalName, 'latin1').toString('utf8');
+                    } catch (e2) {
+                        // 如果还是失败，保持原样
+                        console.warn('无法修复文件名编码:', originalName);
+                    }
+                }
             }
+            
+            file.originalname = originalName;
         } catch (e) {
             console.error('文件名编码转换失败:', e);
         }

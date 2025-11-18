@@ -1,10 +1,40 @@
 const fs = require('fs-extra');
 const path = require('path');
-const { readJSON, writeJSON, FILES_ROOT } = require('../utils/fileHelpers');
+const { FILES_ROOT } = require('../utils/fileHelpers');
+
+// 确保JSON文件使用UTF-8编码读写
+const readJSON_UTF8 = (filename) => {
+    const filePath = path.join(__dirname, '../../data', filename);
+    if (!fs.existsSync(filePath)) {
+        writeJSON_UTF8(filename, []);
+        return [];
+    }
+    try {
+        // 先读取为Buffer，然后转换为UTF-8字符串
+        const buffer = fs.readFileSync(filePath);
+        const data = buffer.toString('utf8');
+        return JSON.parse(data);
+    } catch (error) {
+        console.error(`读取JSON文件失败: ${filename}`, error);
+        return [];
+    }
+};
+
+const writeJSON_UTF8 = (filename, data) => {
+    const filePath = path.join(__dirname, '../../data', filename);
+    fs.ensureDirSync(path.dirname(filePath));
+    
+    // 确保JSON字符串使用UTF-8编码
+    const jsonString = JSON.stringify(data, null, 2);
+    
+    // 使用Buffer确保UTF-8编码
+    const buffer = Buffer.from(jsonString, 'utf8');
+    fs.writeFileSync(filePath, buffer);
+};
 
 class Folder {
     static getAll() {
-        return readJSON('folders.json');
+        return readJSON_UTF8('folders.json');
     }
     
     static findById(id) {
@@ -32,7 +62,7 @@ class Folder {
         };
         
         folders.push(newFolder);
-        writeJSON('folders.json', folders);
+        writeJSON_UTF8('folders.json', folders);
         
         return newFolder;
     }
@@ -53,7 +83,7 @@ class Folder {
         
         // 从列表中删除
         const remainingFolders = folders.filter(f => f.id !== id);
-        writeJSON('folders.json', remainingFolders);
+        writeJSON_UTF8('folders.json', remainingFolders);
         
         return folder;
     }

@@ -68,13 +68,32 @@ class File {
         let originalName = fileData.originalName;
         try {
             // 如果文件名是Buffer，转换为UTF-8字符串
-            if (Buffer.isBuffer(fileData.originalName)) {
-                originalName = fileData.originalName.toString('utf8');
+            if (Buffer.isBuffer(originalName)) {
+                originalName = originalName.toString('utf8');
             }
-            // 如果文件名包含非ASCII字符，确保使用UTF-8编码
-            else if (/[^\\x00-\\x7F]/.test(fileData.originalName)) {
-                // 使用Buffer.from确保UTF-8编码
-                originalName = Buffer.from(fileData.originalName, 'utf8').toString('utf8');
+            // 如果文件名包含非ASCII字符，尝试修复编码
+            else if (/[^\\x00-\\x7F]/.test(originalName)) {
+                // 检查是否已经是正确的UTF-8
+                try {
+                    // 尝试将字符串编码为Buffer再解码，验证是否为有效UTF-8
+                    const testBuffer = Buffer.from(originalName, 'utf8');
+                    const testString = testBuffer.toString('utf8');
+                    if (testString === originalName) {
+                        // 已经是有效的UTF-8，不需要转换
+                        originalName = testString;
+                    } else {
+                        // 可能是其他编码被错误解释为UTF-8，尝试修复
+                        originalName = Buffer.from(originalName, 'latin1').toString('utf8');
+                    }
+                } catch (e) {
+                    // 如果验证失败，尝试修复
+                    try {
+                        originalName = Buffer.from(originalName, 'latin1').toString('utf8');
+                    } catch (e2) {
+                        // 如果还是失败，保持原样
+                        console.warn('无法修复文件名编码:', originalName);
+                    }
+                }
             }
         } catch (e) {
             console.error('文件名编码转换失败:', e);
@@ -156,11 +175,52 @@ class File {
         const errorFiles = [];
         
         for (const savedName of savedNames) {
-            const file = files.find(f => 
+            // 首先尝试通过保存的名称查找
+            let file = files.find(f => 
                 f.savedName === savedName && 
                 f.folderId === folderId && 
                 f.owner === owner
             );
+            
+            // 如果找不到，尝试通过原始名称查找
+            if (!file) {
+                file = files.find(f => 
+                    f.originalName === savedName && 
+                    f.folderId === folderId && 
+                    f.owner === owner
+                );
+            }
+            
+            // 如果还是找不到，尝试多种方式匹配文件名
+            if (!file) {
+                // 获取文件夹中的所有文件
+                const folderFiles = files.filter(f => 
+                    f.folderId === folderId && 
+                    f.owner === owner
+                );
+                
+                file = folderFiles.find(f => {
+                    // 直接比较
+                    if (f.originalName === savedName) return true;
+                    
+                    // 尝试解码后比较
+                    try {
+                        if (decodeURIComponent(f.originalName) === savedName) return true;
+                    } catch (e) {
+                        // 忽略解码错误
+                    }
+                    
+                    // 尝试使用latin1解码
+                    try {
+                        const decodedName = Buffer.from(f.originalName, 'latin1').toString('utf8');
+                        if (decodedName === savedName) return true;
+                    } catch (e) {
+                        // 忽略解码错误
+                    }
+                    
+                    return false;
+                });
+            }
             
             if (!file) {
                 errorFiles.push({

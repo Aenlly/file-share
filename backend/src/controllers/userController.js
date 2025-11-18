@@ -1,4 +1,5 @@
 const jwt = require('jsonwebtoken');
+const bcrypt = require('bcryptjs');
 const User = require('../models/User');
 const Share = require('../models/Share');
 const { SECRET_KEY } = require('../middleware/auth');
@@ -6,23 +7,19 @@ const { SECRET_KEY } = require('../middleware/auth');
 // 用户登录
 const login = (req, res) => {
     const { username, password } = req.body;
-    
-    try {
-        const user = User.verifyPassword(username, password);
-        
-        if (user) {
-            const token = jwt.sign(
-                { id: user.id, username: user.username, role: user.role },
-                SECRET_KEY,
-                { expiresIn: '24h' }
-            );
-            return res.json({ success: true, token, user });
-        }
-        
-        res.status(401).json({ success: false, message: '用户名或密码错误' });
-    } catch (error) {
-        res.status(500).json({ error: error.message });
+    const users = User.getAll();
+    const user = users.find(u => u.username === username);
+
+    if (user && bcrypt.compareSync(password, user.password)) {
+        const token = jwt.sign(
+            { id: user.id, username: user.username, role: user.role },
+            SECRET_KEY,
+            { expiresIn: '24h' }
+        );
+        const { password: pwd, ...safeUser } = user;
+        return res.json({ success: true, token, user: safeUser });
     }
+    res.status(401).json({ success: false, message: '用户名或密码错误' });
 };
 
 // 获取所有用户

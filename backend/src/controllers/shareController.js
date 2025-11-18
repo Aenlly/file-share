@@ -82,9 +82,8 @@ const deleteShare = (req, res) => {
 const verifyShare = (req, res) => {
     try {
         const { code } = req.params;
-        // 将分享码转换为大写，与原始版本保持一致
-        const upperCode = code.toUpperCase();
-        const share = Share.findByCode(upperCode);
+        // 访问码区分大小写，直接使用原始输入
+        const share = Share.findByCode(code);
         
         if (!share) {
             return res.status(404).json({ error: '分享链接不存在' });
@@ -106,27 +105,48 @@ const verifyShare = (req, res) => {
         
         let files = [];
         if (fs.existsSync(dirPath)) {
+            // 先从文件模型中获取文件信息
+            const File = require('../models/File');
+            const fileRecords = File.findByFolder(share.folderId);
+            
+            // 获取物理文件列表
             const rawFiles = fs.readdirSync(dirPath).filter(f => fsNative.statSync(path.join(dirPath, f)).isFile());
             
-            // 处理文件名编码问题
-            files = rawFiles.map(name => {
-                // 尝试修复文件名编码问题
-                let displayName = name;
-                try {
-                    // 如果文件名包含非ASCII字符，尝试转换编码
-                    if (/[^\\x00-\\x7F]/.test(name)) {
-                        displayName = Buffer.from(name, 'latin1').toString('utf8');
-                    }
-                } catch (e) {
-                    // 如果转换失败，使用原始名称
-                    console.error('文件名编码转换失败:', e);
-                }
+            // 合并文件模型信息和物理文件信息
+            files = fileRecords.map(fileRecord => {
+                // 检查物理文件是否存在
+                const physicalFile = rawFiles.find(name => name === fileRecord.savedName);
                 
-                return {
-                    name: displayName,
-                    originalName: name // 保留原始名称用于文件操作
-                };
-            });
+                if (physicalFile) {
+                    return {
+                        name: fileRecord.originalName, // 使用原始文件名
+                        originalName: fileRecord.savedName // 保存的文件名用于文件操作
+                    };
+                }
+                return null;
+            }).filter(file => file !== null);
+            
+            // 如果文件模型中没有记录，则使用物理文件列表
+            if (files.length === 0) {
+                files = rawFiles.map(name => {
+                    // 尝试修复文件名编码问题
+                    let displayName = name;
+                    try {
+                        // 如果文件名包含非ASCII字符，尝试转换编码
+                        if (/[^\\x00-\\x7F]/.test(name)) {
+                            displayName = Buffer.from(name, 'latin1').toString('utf8');
+                        }
+                    } catch (e) {
+                        // 如果转换失败，使用原始名称
+                        console.error('文件名编码转换失败:', e);
+                    }
+                    
+                    return {
+                        name: displayName,
+                        originalName: name // 保留原始名称用于文件操作
+                    };
+                });
+            }
         }
         
         res.json({

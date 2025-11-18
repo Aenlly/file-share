@@ -119,7 +119,11 @@ const Dashboard = () => {
     if (shareInfo) {
       // 使用配置的基础URL或当前origin
       const baseUrl = import.meta.env.VITE_BASE_URL || window.location.origin
-      const shareUrl = `${baseUrl}/guest/${shareInfo.code}`
+      const shareUrl = `${baseUrl}/guest`
+      const accessCode = shareInfo.code
+      
+      // 复制可以直接在浏览器中访问的完整链接
+      const shareText = `${shareUrl}?code=${accessCode}`
       
       // 使用多种方法尝试复制到剪贴板
       const copyToClipboard = (text) => {
@@ -167,7 +171,7 @@ const Dashboard = () => {
                 <div>
                   <p>请手动复制以下链接：</p>
                   <Input.TextArea 
-                    value={shareUrl} 
+                    value={shareText} 
                     readOnly 
                     style={{ marginTop: 8 }}
                   />
@@ -185,7 +189,7 @@ const Dashboard = () => {
               <div>
                 <p>请手动复制以下链接：</p>
                 <Input.TextArea 
-                  value={shareUrl} 
+                  value={shareText} 
                   readOnly 
                   style={{ marginTop: 8 }}
                 />
@@ -196,7 +200,7 @@ const Dashboard = () => {
         }
       }
       
-      copyToClipboard(shareUrl)
+      copyToClipboard(shareText)
     }
   }
 
@@ -340,13 +344,19 @@ const Dashboard = () => {
         {shareInfo && (
           <div style={{ textAlign: 'center' }}>
             <div style={{ marginBottom: 16 }}>
-              <Text strong>访客码:</Text>
+              <Text strong>访问链接:</Text>
+            </div>
+            <div className="share-url" style={{ marginBottom: 16, wordBreak: 'break-all' }}>
+              {window.location.origin}/guest
+            </div>
+            <div style={{ marginBottom: 16 }}>
+              <Text strong>访问码:</Text>
             </div>
             <div className="share-code">
               {shareInfo.code}
             </div>
             <div style={{ margin: '16px 0' }}>
-              <QRCode value={`${window.location.origin}/guest/${shareInfo.code}`} />
+              <QRCode value={`${window.location.origin}/guest`} />
             </div>
             <div>
               <Text type="secondary">

@@ -105,17 +105,21 @@ const FolderDetail = () => {
     try {
       // 确保文件名使用UTF-8编码
       let fileName = file.name;
-      try {
-        // 如果文件名包含非ASCII字符，确保使用UTF-8编码
-        if (/[^\\x00-\\x7F]/.test(file.name)) {
-          // 使用TextEncoder确保UTF-8编码
+      
+      // 对于包含非ASCII字符的文件名，进行编码处理
+      if (/[^\\x00-\\x7F]/.test(fileName)) {
+        try {
+          // 将文件名转换为UTF-8字节数组，然后再转换为Base64
           const encoder = new TextEncoder();
-          const uint8Array = encoder.encode(file.name);
-          fileName = new TextDecoder('utf-8').decode(uint8Array);
+          const uint8Array = encoder.encode(fileName);
+          // 将字节数组转换为Base64字符串
+          fileName = btoa(String.fromCharCode.apply(null, uint8Array));
+          // 添加标记，表示这是Base64编码的文件名
+          fileName = 'UTF8:' + fileName;
+        } catch (e) {
+          console.error('文件名编码失败:', e);
+          // 如果编码失败，使用原始文件名
         }
-      } catch (e) {
-        console.error('文件名编码转换失败:', e);
-        fileName = file.name;
       }
       
       // 初始化分片上传
@@ -330,7 +334,30 @@ const FolderDetail = () => {
         
         // 添加所有选中的文件
         fileList.forEach(file => {
-          formData.append('files', file)
+          let fileName = file.name;
+          
+          // 对于包含非ASCII字符的文件名，进行编码处理
+          if (/[^\\x00-\\x7F]/.test(fileName)) {
+            try {
+              // 将文件名转换为UTF-8字节数组，然后再转换为Base64
+              const encoder = new TextEncoder();
+              const uint8Array = encoder.encode(fileName);
+              // 将字节数组转换为Base64字符串
+              const base64Name = btoa(String.fromCharCode.apply(null, uint8Array));
+              // 添加标记，表示这是Base64编码的文件名
+              fileName = 'UTF8:' + base64Name;
+            } catch (e) {
+              console.error('文件名编码失败:', e);
+              // 如果编码失败，使用原始文件名
+            }
+          }
+          
+          // 创建一个新的File对象，使用处理后的文件名
+          const correctedFile = new File([file], fileName, {
+            type: file.type,
+            lastModified: file.lastModified
+          });
+          formData.append('files', correctedFile)
         })
         
         // 如果有强制上传选项，添加到表单数据
@@ -479,8 +506,13 @@ const FolderDetail = () => {
   const copyShareLink = () => {
     if (!shareCode) return
     
-    const shareUrl = `${window.location.origin}/guest/${shareCode}`
-    navigator.clipboard.writeText(shareUrl)
+    const shareUrl = `${window.location.origin}/guest`
+    const accessCode = shareCode
+    
+    // 复制可以直接在浏览器中访问的完整链接
+    const shareText = `${shareUrl}?code=${accessCode}`
+    
+    navigator.clipboard.writeText(shareText)
       .then(() => message.success('分享链接已复制到剪贴板'))
       .catch(() => message.error('复制失败'))
   }

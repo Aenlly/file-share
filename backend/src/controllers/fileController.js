@@ -81,7 +81,20 @@ const uploadFile = (req, res) => {
         for (const file of req.files) {
             try {
                 // 检查文件类型安全性
-                const fileSafety = isFileTypeSafe(file.originalname);
+                // 如果文件名是Base64编码的，先解码再检查
+                let filenameForCheck = file.originalname;
+                if (filenameForCheck.startsWith('UTF8:')) {
+                    try {
+                        const base64Part = filenameForCheck.substring(5);
+                        const bytes = Buffer.from(base64Part, 'base64');
+                        filenameForCheck = bytes.toString('utf8');
+                    } catch (e) {
+                        console.error('Base64文件名解码失败:', e);
+                        // 如果解码失败，使用原始文件名
+                    }
+                }
+                
+                const fileSafety = isFileTypeSafe(filenameForCheck);
                 if (!fileSafety.safe) {
                     // 删除已上传的文件
                     fs.removeSync(file.path);
@@ -142,19 +155,56 @@ const uploadFile = (req, res) => {
                         
                         // 确保原始文件名使用UTF-8编码
                         let originalName = file.originalname;
-                        try {
-                            // 如果文件名是Buffer，转换为UTF-8字符串
-                            if (Buffer.isBuffer(file.originalname)) {
-                                originalName = file.originalname.toString('utf8');
+                        
+                        // 检查是否是Base64编码的文件名（前端发送的）
+                        if (originalName.startsWith('UTF8:')) {
+                            try {
+                                // 提取Base64部分
+                                const base64Part = originalName.substring(5);
+                                // 使用Node.js的Buffer处理Base64
+                                const bytes = Buffer.from(base64Part, 'base64');
+                                // 将Buffer转换为UTF-8字符串
+                                originalName = bytes.toString('utf8');
+                            } catch (e) {
+                                console.error('Base64文件名解码失败:', e);
+                                // 如果解码失败，使用原始文件名
+                                originalName = file.originalname;
                             }
-                            // 如果文件名包含非ASCII字符，确保使用UTF-8编码
-                            else if (/[^\\x00-\\x7F]/.test(file.originalname)) {
-                                // 使用Buffer.from确保UTF-8编码
-                                originalName = Buffer.from(file.originalname, 'utf8').toString('utf8');
+                        } else {
+                            // 常规处理
+                            try {
+                                // 如果文件名是Buffer，转换为UTF-8字符串
+                                if (Buffer.isBuffer(originalName)) {
+                                    originalName = originalName.toString('utf8');
+                                }
+                                // 如果文件名包含非ASCII字符，尝试修复编码
+                                else if (/[^\\x00-\\x7F]/.test(originalName)) {
+                                    // 检查是否已经是正确的UTF-8
+                                    try {
+                                        // 尝试将字符串编码为Buffer再解码，验证是否为有效UTF-8
+                                        const testBuffer = Buffer.from(originalName, 'utf8');
+                                        const testString = testBuffer.toString('utf8');
+                                        if (testString === originalName) {
+                                            // 已经是有效的UTF-8，不需要转换
+                                            originalName = testString;
+                                        } else {
+                                            // 可能是其他编码被错误解释为UTF-8，尝试修复
+                                            originalName = Buffer.from(originalName, 'latin1').toString('utf8');
+                                        }
+                                    } catch (e) {
+                                        // 如果验证失败，尝试修复
+                                        try {
+                                            originalName = Buffer.from(originalName, 'latin1').toString('utf8');
+                                        } catch (e2) {
+                                            // 如果还是失败，保持原样
+                                            console.warn('无法修复文件名编码:', originalName);
+                                        }
+                                    }
+                                }
+                            } catch (e) {
+                                console.error('文件名编码转换失败:', e);
+                                originalName = file.originalname;
                             }
-                        } catch (e) {
-                            console.error('文件名编码转换失败:', e);
-                            originalName = file.originalname;
                         }
                         
                         // 创建文件记录
@@ -218,19 +268,56 @@ const uploadFile = (req, res) => {
                 
                 // 确保原始文件名使用UTF-8编码
                 let originalName = file.originalname;
-                try {
-                    // 如果文件名是Buffer，转换为UTF-8字符串
-                    if (Buffer.isBuffer(file.originalname)) {
-                        originalName = file.originalname.toString('utf8');
+                
+                // 检查是否是Base64编码的文件名（前端发送的）
+                if (originalName.startsWith('UTF8:')) {
+                    try {
+                        // 提取Base64部分
+                        const base64Part = originalName.substring(5);
+                        // 使用Node.js的Buffer处理Base64
+                        const bytes = Buffer.from(base64Part, 'base64');
+                        // 将Buffer转换为UTF-8字符串
+                        originalName = bytes.toString('utf8');
+                    } catch (e) {
+                        console.error('Base64文件名解码失败:', e);
+                        // 如果解码失败，使用原始文件名
+                        originalName = file.originalname;
                     }
-                    // 如果文件名包含非ASCII字符，确保使用UTF-8编码
-                    else if (/[^\\x00-\\x7F]/.test(file.originalname)) {
-                        // 使用Buffer.from确保UTF-8编码
-                        originalName = Buffer.from(file.originalname, 'utf8').toString('utf8');
+                } else {
+                    // 常规处理
+                    try {
+                        // 如果文件名是Buffer，转换为UTF-8字符串
+                        if (Buffer.isBuffer(originalName)) {
+                            originalName = originalName.toString('utf8');
+                        }
+                        // 如果文件名包含非ASCII字符，尝试修复编码
+                        else if (/[^\\x00-\\x7F]/.test(originalName)) {
+                            // 检查是否已经是正确的UTF-8
+                            try {
+                                // 尝试将字符串编码为Buffer再解码，验证是否为有效UTF-8
+                                const testBuffer = Buffer.from(originalName, 'utf8');
+                                const testString = testBuffer.toString('utf8');
+                                if (testString === originalName) {
+                                    // 已经是有效的UTF-8，不需要转换
+                                    originalName = testString;
+                                } else {
+                                    // 可能是其他编码被错误解释为UTF-8，尝试修复
+                                    originalName = Buffer.from(originalName, 'latin1').toString('utf8');
+                                }
+                            } catch (e) {
+                                // 如果验证失败，尝试修复
+                                try {
+                                    originalName = Buffer.from(originalName, 'latin1').toString('utf8');
+                                } catch (e2) {
+                                    // 如果还是失败，保持原样
+                                    console.warn('无法修复文件名编码:', originalName);
+                                }
+                            }
+                        }
+                    } catch (e) {
+                        console.error('文件名编码转换失败:', e);
+                        originalName = file.originalname;
                     }
-                } catch (e) {
-                    console.error('文件名编码转换失败:', e);
-                    originalName = file.originalname;
                 }
                 
                 // 创建文件记录
@@ -322,7 +409,41 @@ const deleteFile = (req, res) => {
         // 如果是单个文件删除，使用文件名查找
         if (filesToDelete.length === 1 && filename) {
             try {
-                const file = File.findByOriginalName(filename, folderId);
+                let file = File.findByOriginalName(filename, folderId);
+                
+                // 如果找不到，尝试使用保存的名称查找
+                if (!file) {
+                    file = File.findBySavedName(filename, folderId);
+                }
+                
+                // 如果还是找不到，尝试直接查找文件
+                if (!file) {
+                    // 获取文件夹中的所有文件
+                    const folderFiles = File.findByFolder(folderId);
+                    // 尝试多种方式匹配文件名
+                    file = folderFiles.find(f => {
+                        // 直接比较
+                        if (f.originalName === filename) return true;
+                        
+                        // 尝试解码后比较
+                        try {
+                            if (decodeURIComponent(f.originalName) === filename) return true;
+                        } catch (e) {
+                            // 忽略解码错误
+                        }
+                        
+                        // 尝试使用latin1解码
+                        try {
+                            const decodedName = Buffer.from(f.originalName, 'latin1').toString('utf8');
+                            if (decodedName === filename) return true;
+                        } catch (e) {
+                            // 忽略解码错误
+                        }
+                        
+                        return false;
+                    });
+                }
+                
                 if (!file || file.owner !== req.user.username) {
                     return res.status(404).json({ error: '文件不存在或无权删除' });
                 }
@@ -356,10 +477,9 @@ const deleteFile = (req, res) => {
 const downloadSharedFile = (req, res) => {
     try {
         const { code, filename } = req.params;
-        // 将分享码转换为大写，与原始版本保持一致
-        const upperCode = code.toUpperCase();
+        // 访问码区分大小写，直接使用原始输入
         const shares = require('../models/Share').getAll();
-        const share = shares.find(s => s.code === upperCode);
+        const share = shares.find(s => s.code === code);
         
         if (!share) {
             return res.status(404).json({ error: '分享链接不存在' });
@@ -376,37 +496,59 @@ const downloadSharedFile = (req, res) => {
             return res.status(404).json({ error: '文件夹不存在' });
         }
         
-        // 获取文件夹中的所有文件，找到匹配的文件
+        // 先从文件模型中查找文件
+        const File = require('../models/File');
+        let fileRecord = File.findByOriginalName(filename, share.folderId);
+        
+        // 如果找不到，尝试使用保存的名称查找
+        if (!fileRecord) {
+            fileRecord = File.findBySavedName(filename, share.folderId);
+        }
+        
+        // 获取文件夹中的所有文件，用于备用查找
         const dirPath = path.join(FILES_ROOT, folder.physicalPath);
         const files = fs.existsSync(dirPath) ? fs.readdirSync(dirPath).filter(f => fsNative.statSync(path.join(dirPath, f)).isFile()) : [];
         
-        // 查找原始文件名
-        let originalFileName = filename;
-        for (const file of files) {
-            let displayName = file;
-            try {
-                // 如果文件名包含非ASCII字符，尝试转换编码
-                if (/[^\\x00-\\x7F]/.test(file)) {
-                    displayName = Buffer.from(file, 'latin1').toString('utf8');
+        let filePath;
+        let downloadName = filename;
+        
+        if (fileRecord) {
+            // 使用文件模型中的信息
+            filePath = path.join(FILES_ROOT, folder.physicalPath, fileRecord.savedName);
+            downloadName = fileRecord.originalName;
+        } else {
+            // 如果文件模型中没有记录，则使用原始方法查找
+            let originalFileName = filename;
+            for (const file of files) {
+                let displayName = file;
+                try {
+                    // 如果文件名包含非ASCII字符，尝试转换编码
+                    if (/[^\\x00-\\x7F]/.test(file)) {
+                        displayName = Buffer.from(file, 'latin1').toString('utf8');
+                    }
+                } catch (e) {
+                    // 如果转换失败，使用原始名称
+                    console.error('文件名编码转换失败:', e);
                 }
-            } catch (e) {
-                // 如果转换失败，使用原始名称
-                console.error('文件名编码转换失败:', e);
+                
+                if (displayName === filename) {
+                    originalFileName = file;
+                    break;
+                }
             }
             
-            if (displayName === filename) {
-                originalFileName = file;
-                break;
+            if (!originalFileName) {
+                return res.status(404).json({ error: '文件不存在' });
             }
+            
+            filePath = path.join(FILES_ROOT, folder.physicalPath, originalFileName);
         }
-        
-        const filePath = path.join(FILES_ROOT, folder.physicalPath, originalFileName);
         
         if (!fs.existsSync(filePath)) {
             return res.status(404).json({ error: '文件不存在' });
         }
         
-        res.download(filePath, filename);
+        res.download(filePath, downloadName);
     } catch (error) {
         res.status(500).json({ error: error.message });
     }
@@ -416,10 +558,9 @@ const downloadSharedFile = (req, res) => {
 const downloadSharedFiles = async (req, res) => {
     try {
         const { code } = req.params;
-        // 将分享码转换为大写，与原始版本保持一致
-        const upperCode = code.toUpperCase();
+        // 访问码区分大小写，直接使用原始输入
         const shares = require('../models/Share').getAll();
-        const share = shares.find(s => s.code === upperCode);
+        const share = shares.find(s => s.code === code);
         
         if (!share) {
             return res.status(404).json({ error: '分享链接不存在' });
@@ -505,7 +646,183 @@ const getFilePreview = async (req, res) => {
         }
         
         // 从文件模型中查找文件
-        const file = File.findByOriginalName(filename, parseInt(folderId));
+        // 先尝试使用保存的名称查找文件
+        let file = File.findBySavedName(filename, parseInt(folderId));
+        
+        // 如果找不到，尝试使用原始名称查找文件
+        if (!file) {
+            file = File.findByOriginalName(filename, parseInt(folderId));
+        }
+        
+        // 如果还是找不到，尝试直接查找文件
+        if (!file) {
+            // 获取用户的所有文件夹
+            const folders = Folder.findByOwner(req.user.username);
+            const folder = folders.find(f => f.id === parseInt(folderId));
+            
+            if (folder) {
+                // 直接在文件夹中查找文件
+                const folderPath = path.join(FILES_ROOT, folder.physicalPath);
+                const files = fs.readdirSync(folderPath);
+                let foundFile = null;
+                
+                // 尝试多种方式匹配文件名
+                for (const f of files) {
+                    // 直接比较
+                    if (f === filename) {
+                        foundFile = f;
+                        break;
+                    }
+                    
+                    // 解码后比较
+                    try {
+                        if (decodeURIComponent(f) === filename) {
+                            foundFile = f;
+                            break;
+                        }
+                    } catch (e) {
+                        // 忽略解码错误
+                    }
+                    
+                    // 尝试使用latin1解码
+                    try {
+                        const decodedName = Buffer.from(f, 'latin1').toString('utf8');
+                        if (decodedName === filename) {
+                            foundFile = f;
+                            break;
+                        }
+                    } catch (e) {
+                        // 忽略解码错误
+                    }
+                    
+                    // 尝试使用binary解码
+                    try {
+                        const decodedName = Buffer.from(f, 'binary').toString('utf8');
+                        if (decodedName === filename) {
+                            foundFile = f;
+                            break;
+                        }
+                    } catch (e) {
+                        // 忽略解码错误
+                    }
+                }
+                
+                if (foundFile) {
+                    const filePath = path.join(folderPath, foundFile);
+                    if (fs.existsSync(filePath)) {
+                        // 使用res.download下载文件，使用原始文件名作为下载名
+                        // 尝试解码文件名
+                        let downloadName = filename;
+                        try {
+                            downloadName = Buffer.from(filename, 'latin1').toString('utf8');
+                        } catch (e) {
+                            try {
+                                downloadName = Buffer.from(filename, 'binary').toString('utf8');
+                            } catch (e2) {
+                                // 使用原始名称
+                            }
+                        }
+                        
+                        res.download(filePath, downloadName);
+                        return;
+                    }
+                }
+            }
+        }
+        
+        // 如果还是找不到，尝试直接查找文件
+        if (!file) {
+            // 获取用户的所有文件夹
+            const folders = Folder.findByOwner(user.username);
+            const folder = folders.find(f => f.id === parseInt(folderId));
+            
+            if (folder) {
+                // 直接在文件夹中查找文件
+                const folderPath = path.join(FILES_ROOT, folder.physicalPath);
+                const files = fs.readdirSync(folderPath);
+                let foundFile = null;
+                
+                // 尝试多种方式匹配文件名
+                for (const f of files) {
+                    // 直接比较
+                    if (f === filename) {
+                        foundFile = f;
+                        break;
+                    }
+                    
+                    // 解码后比较
+                    try {
+                        if (decodeURIComponent(f) === filename) {
+                            foundFile = f;
+                            break;
+                        }
+                    } catch (e) {
+                        // 忽略解码错误
+                    }
+                    
+                    // 尝试使用latin1解码
+                    try {
+                        const decodedName = Buffer.from(f, 'latin1').toString('utf8');
+                        if (decodedName === filename) {
+                            foundFile = f;
+                            break;
+                        }
+                    } catch (e) {
+                        // 忽略解码错误
+                    }
+                    
+                    // 尝试使用binary解码
+                    try {
+                        const decodedName = Buffer.from(f, 'binary').toString('utf8');
+                        if (decodedName === filename) {
+                            foundFile = f;
+                            break;
+                        }
+                    } catch (e) {
+                        // 忽略解码错误
+                    }
+                }
+                
+                if (foundFile) {
+                    const filePath = path.join(folderPath, foundFile);
+                    if (fs.existsSync(filePath)) {
+                        // 检查文件是否为图片
+                        const ext = path.extname(foundFile).toLowerCase();
+                        const imageExtensions = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp'];
+                        
+                        if (imageExtensions.includes(ext)) {
+                            // 设置响应头
+                            res.setHeader('Content-Type', 'image/jpeg');
+                            res.setHeader('Cache-Control', 'public, max-age=86400'); // 缓存1天
+                            
+                            // 使用jimp生成缩略图
+                            const image = await Jimp.read(filePath);
+                            
+                            // 获取原始图片尺寸
+                            const originalWidth = image.getWidth();
+                            const originalHeight = image.getHeight();
+                            
+                            // 计算缩放比例，保持宽高比
+                            const widthRatio = parseInt(width) / originalWidth;
+                            const heightRatio = parseInt(height) / originalHeight;
+                            const scaleFactor = Math.min(widthRatio, heightRatio, 1); // 不放大图片
+                            
+                            // 计算新尺寸
+                            const newWidth = Math.round(originalWidth * scaleFactor);
+                            const newHeight = Math.round(originalHeight * scaleFactor);
+                            
+                            // 缩放图片，保持宽高比
+                            image.resize(newWidth, newHeight);
+                            image.quality(70); // 设置更低的压缩质量，减小文件大小
+                            
+                            const buffer = await image.getBufferAsync('image/jpeg');
+                            res.send(buffer);
+                            return;
+                        }
+                    }
+                }
+            }
+        }
         
         if (!file || file.owner !== user.username) {
             return res.status(403).json({ error: '无权访问' });
@@ -555,7 +872,7 @@ const getFilePreview = async (req, res) => {
         image.resize(newWidth, newHeight);
         image.quality(70); // 设置更低的压缩质量，减小文件大小
         
-        const buffer = await image.getBufferAsync(Jimp.MIME_JPEG);
+        const buffer = await image.getBufferAsync('image/jpeg');
         res.send(buffer);
     } catch (error) {
         res.status(500).json({ error: error.message });
@@ -568,7 +885,89 @@ const downloadFile = (req, res) => {
         const { folderId, filename } = req.params;
         
         // 从文件模型中查找文件
-        const file = File.findByOriginalName(filename, parseInt(folderId));
+        // 先尝试使用保存的名称查找文件
+        let file = File.findBySavedName(filename, parseInt(folderId));
+        
+        // 如果找不到，尝试使用原始名称查找文件
+        if (!file) {
+            file = File.findByOriginalName(filename, parseInt(folderId));
+        }
+        
+        // 如果还是找不到，尝试直接查找文件
+        if (!file) {
+            // 获取用户的所有文件夹
+            const folders = Folder.findByOwner(req.user.username);
+            const folder = folders.find(f => f.id === parseInt(folderId));
+            
+            if (folder) {
+                // 直接在文件夹中查找文件
+                const folderPath = path.join(FILES_ROOT, folder.physicalPath);
+                const files = fs.readdirSync(folderPath);
+                let foundFile = null;
+                
+                // 尝试多种方式匹配文件名
+                for (const f of files) {
+                    // 直接比较
+                    if (f === filename) {
+                        foundFile = f;
+                        break;
+                    }
+                    
+                    // 解码后比较
+                    try {
+                        if (decodeURIComponent(f) === filename) {
+                            foundFile = f;
+                            break;
+                        }
+                    } catch (e) {
+                        // 忽略解码错误
+                    }
+                    
+                    // 尝试使用latin1解码
+                    try {
+                        const decodedName = Buffer.from(f, 'latin1').toString('utf8');
+                        if (decodedName === filename) {
+                            foundFile = f;
+                            break;
+                        }
+                    } catch (e) {
+                        // 忽略解码错误
+                    }
+                    
+                    // 尝试使用binary解码
+                    try {
+                        const decodedName = Buffer.from(f, 'binary').toString('utf8');
+                        if (decodedName === filename) {
+                            foundFile = f;
+                            break;
+                        }
+                    } catch (e) {
+                        // 忽略解码错误
+                    }
+                }
+                
+                if (foundFile) {
+                    const filePath = path.join(folderPath, foundFile);
+                    if (fs.existsSync(filePath)) {
+                        // 使用res.download下载文件，使用原始文件名作为下载名
+                        // 尝试解码文件名
+                        let downloadName = filename;
+                        try {
+                            downloadName = Buffer.from(filename, 'latin1').toString('utf8');
+                        } catch (e) {
+                            try {
+                                downloadName = Buffer.from(filename, 'binary').toString('utf8');
+                            } catch (e2) {
+                                // 使用原始名称
+                            }
+                        }
+                        
+                        res.download(filePath, downloadName);
+                        return;
+                    }
+                }
+            }
+        }
         
         if (!file || file.owner !== req.user.username) {
             return res.status(403).json({ error: '无权访问' });
@@ -607,7 +1006,20 @@ const initChunkUpload = (req, res) => {
         }
         
         // 检查文件类型安全性
-        const fileSafety = isFileTypeSafe(fileName);
+        // 如果文件名是Base64编码的，先解码再检查
+        let filenameForCheck = fileName;
+        if (filenameForCheck.startsWith('UTF8:')) {
+            try {
+                const base64Part = filenameForCheck.substring(5);
+                const bytes = Buffer.from(base64Part, 'base64');
+                filenameForCheck = bytes.toString('utf8');
+            } catch (e) {
+                console.error('Base64文件名解码失败:', e);
+                // 如果解码失败，使用原始文件名
+            }
+        }
+        
+        const fileSafety = isFileTypeSafe(filenameForCheck);
         if (!fileSafety.safe) {
             return res.status(400).json({ error: fileSafety.reason });
         }
@@ -634,19 +1046,56 @@ const initChunkUpload = (req, res) => {
         
         // 确保原始文件名使用UTF-8编码
         let originalFileName = fileName;
-        try {
-            // 如果文件名是Buffer，转换为UTF-8字符串
-            if (Buffer.isBuffer(fileName)) {
-                originalFileName = fileName.toString('utf8');
+        
+        // 检查是否是Base64编码的文件名（前端发送的）
+        if (fileName.startsWith('UTF8:')) {
+            try {
+                // 提取Base64部分
+                const base64Part = fileName.substring(5);
+                // 使用Node.js的Buffer处理Base64
+                const bytes = Buffer.from(base64Part, 'base64');
+                // 将Buffer转换为UTF-8字符串
+                originalFileName = bytes.toString('utf8');
+            } catch (e) {
+                console.error('Base64文件名解码失败:', e);
+                // 如果解码失败，使用原始文件名
+                originalFileName = fileName;
             }
-            // 如果文件名包含非ASCII字符，确保使用UTF-8编码
-            else if (/[^\\x00-\\x7F]/.test(fileName)) {
-                // 使用Buffer.from确保UTF-8编码
-                originalFileName = Buffer.from(fileName, 'utf8').toString('utf8');
+        } else {
+            // 常规处理
+            try {
+                // 如果文件名是Buffer，转换为UTF-8字符串
+                if (Buffer.isBuffer(fileName)) {
+                    originalFileName = fileName.toString('utf8');
+                }
+                // 如果文件名包含非ASCII字符，尝试修复编码
+                else if (/[^\\x00-\\x7F]/.test(fileName)) {
+                    // 检查是否已经是正确的UTF-8
+                    try {
+                        // 尝试将字符串编码为Buffer再解码，验证是否为有效UTF-8
+                        const testBuffer = Buffer.from(fileName, 'utf8');
+                        const testString = testBuffer.toString('utf8');
+                        if (testString === fileName) {
+                            // 已经是有效的UTF-8，不需要转换
+                            originalFileName = testString;
+                        } else {
+                            // 可能是其他编码被错误解释为UTF-8，尝试修复
+                            originalFileName = Buffer.from(fileName, 'latin1').toString('utf8');
+                        }
+                    } catch (e) {
+                        // 如果验证失败，尝试修复
+                        try {
+                            originalFileName = Buffer.from(fileName, 'latin1').toString('utf8');
+                        } catch (e2) {
+                            // 如果还是失败，保持原样
+                            console.warn('无法修复文件名编码:', fileName);
+                        }
+                    }
+                }
+            } catch (e) {
+                console.error('文件名编码转换失败:', e);
+                originalFileName = fileName;
             }
-        } catch (e) {
-            console.error('文件名编码转换失败:', e);
-            originalFileName = fileName;
         }
         
         // 保存上传信息
@@ -806,19 +1255,56 @@ const completeChunkUpload = (req, res) => {
         
         // 确保原始文件名使用UTF-8编码
         let originalFileName = uploadInfo.originalFileName;
-        try {
-            // 如果文件名是Buffer，转换为UTF-8字符串
-            if (Buffer.isBuffer(uploadInfo.originalFileName)) {
-                originalFileName = uploadInfo.originalFileName.toString('utf8');
+        
+        // 检查是否是Base64编码的文件名（前端发送的）
+        if (uploadInfo.originalFileName.startsWith('UTF8:')) {
+            try {
+                // 提取Base64部分
+                const base64Part = uploadInfo.originalFileName.substring(5);
+                // 使用Node.js的Buffer处理Base64
+                const bytes = Buffer.from(base64Part, 'base64');
+                // 将Buffer转换为UTF-8字符串
+                originalFileName = bytes.toString('utf8');
+            } catch (e) {
+                console.error('Base64文件名解码失败:', e);
+                // 如果解码失败，使用原始文件名
+                originalFileName = uploadInfo.originalFileName;
             }
-            // 如果文件名包含非ASCII字符，确保使用UTF-8编码
-            else if (/[^\\x00-\\x7F]/.test(uploadInfo.originalFileName)) {
-                // 使用Buffer.from确保UTF-8编码
-                originalFileName = Buffer.from(uploadInfo.originalFileName, 'utf8').toString('utf8');
+        } else {
+            // 常规处理
+            try {
+                // 如果文件名是Buffer，转换为UTF-8字符串
+                if (Buffer.isBuffer(uploadInfo.originalFileName)) {
+                    originalFileName = uploadInfo.originalFileName.toString('utf8');
+                }
+                // 如果文件名包含非ASCII字符，尝试修复编码
+                else if (/[^\\x00-\\x7F]/.test(uploadInfo.originalFileName)) {
+                    // 检查是否已经是正确的UTF-8
+                    try {
+                        // 尝试将字符串编码为Buffer再解码，验证是否为有效UTF-8
+                        const testBuffer = Buffer.from(uploadInfo.originalFileName, 'utf8');
+                        const testString = testBuffer.toString('utf8');
+                        if (testString === uploadInfo.originalFileName) {
+                            // 已经是有效的UTF-8，不需要转换
+                            originalFileName = testString;
+                        } else {
+                            // 可能是其他编码被错误解释为UTF-8，尝试修复
+                            originalFileName = Buffer.from(uploadInfo.originalFileName, 'latin1').toString('utf8');
+                        }
+                    } catch (e) {
+                        // 如果验证失败，尝试修复
+                        try {
+                            originalFileName = Buffer.from(uploadInfo.originalFileName, 'latin1').toString('utf8');
+                        } catch (e2) {
+                            // 如果还是失败，保持原样
+                            console.warn('无法修复文件名编码:', uploadInfo.originalFileName);
+                        }
+                    }
+                }
+            } catch (e) {
+                console.error('文件名编码转换失败:', e);
+                originalFileName = uploadInfo.originalFileName;
             }
-        } catch (e) {
-            console.error('文件名编码转换失败:', e);
-            originalFileName = uploadInfo.originalFileName;
         }
         
         // 创建文件记录

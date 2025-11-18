@@ -1,38 +1,87 @@
-const fs = require('fs');
+const fs = require('fs-extra');
 const path = require('path');
 
-// 读取files.json文件
-const filePath = path.join(__dirname, 'data/files.json');
+const DATA_DIR = path.join(__dirname, 'data');
 
-try {
-    // 读取文件内容
-    const buffer = fs.readFileSync(filePath);
-    const data = buffer.toString('utf8');
-    const files = JSON.parse(data);
+// 读取JSON文件
+const readJSON = (filename) => {
+    const fullPath = path.join(DATA_DIR, filename);
+    if (!fs.existsSync(fullPath)) return [];
+    try {
+        return JSON.parse(fs.readFileSync(fullPath, 'utf-8'));
+    } catch {
+        return [];
+    }
+};
+
+// 写入JSON文件
+const writeJSON = (filename, data) => {
+    fs.writeFileSync(path.join(DATA_DIR, filename), JSON.stringify(data, null, 2), 'utf-8');
+};
+
+// 修复文件名编码
+function fixFilenameEncoding(filename) {
+    // 如果文件名只包含ASCII字符，直接返回
+    if (!/[^\x00-\x7F]/.test(filename)) {
+        return filename;
+    }
     
-    // 修复每个文件的originalName
-    const fixedFiles = files.map(file => {
-        // 如果文件名包含乱码字符，尝试修复
-        if (file.originalName && /[\u00c0-\u00ff]/.test(file.originalName)) {
-            // 将乱码字符转换为正确的UTF-8编码
-            try {
-                // 使用latin1编码读取，然后转换为utf8
-                const fixedName = Buffer.from(file.originalName, 'latin1').toString('utf8');
-                file.originalName = fixedName;
-                console.log(`修复文件名: ${file.originalName} -> ${fixedName}`);
-            } catch (e) {
-                console.error(`修复文件名失败: ${file.originalName}`, e);
-            }
+    // 尝试修复编码
+    try {
+        // 检查是否已经是正确的UTF-8
+        const testBuffer = Buffer.from(filename, 'utf8');
+        const testString = testBuffer.toString('utf8');
+        if (testString === filename) {
+            return filename;
         }
-        return file;
+    } catch (e) {
+        // 继续尝试修复
+    }
+    
+    // 尝试使用latin1解码，然后用utf8编码
+    try {
+        const fixed = Buffer.from(filename, 'latin1').toString('utf8');
+        console.log(`尝试修复: ${filename} -> ${fixed}`);
+        return fixed;
+    } catch (e) {
+        // 如果失败，尝试其他编码方式
+        try {
+            const fixed = Buffer.from(filename, 'binary').toString('utf8');
+            console.log(`尝试修复: ${filename} -> ${fixed}`);
+            return fixed;
+        } catch (e2) {
+            // 如果还是失败，返回原始文件名
+            console.warn('无法修复文件名编码:', filename);
+            return filename;
+        }
+    }
+}
+
+// 修复files.json中的文件名
+function fixFilesJson() {
+    const files = readJSON('files.json');
+    let fixedCount = 0;
+    
+    files.forEach(file => {
+        const originalName = file.originalName;
+        const fixedName = fixFilenameEncoding(originalName);
+        
+        if (originalName !== fixedName) {
+            console.log(`修复文件名: ${originalName} -> ${fixedName}`);
+            file.originalName = fixedName;
+            fixedCount++;
+        }
     });
     
-    // 写回文件，确保使用UTF-8编码
-    const jsonString = JSON.stringify(fixedFiles, null, 2);
-    const bufferOut = Buffer.from(jsonString, 'utf8');
-    fs.writeFileSync(filePath, bufferOut);
-    
-    console.log('文件名修复完成');
-} catch (error) {
-    console.error('修复文件名失败:', error);
+    if (fixedCount > 0) {
+        writeJSON('files.json', files);
+        console.log(`已修复 ${fixedCount} 个文件名`);
+    } else {
+        console.log('没有需要修复的文件名');
+    }
 }
+
+// 执行修复
+console.log('开始修复文件名编码...');
+fixFilesJson();
+console.log('修复完成');

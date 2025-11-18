@@ -67,8 +67,13 @@ const ShareManagement = () => {
 
   // 复制分享链接
   const copyShareLink = (share) => {
-    const shareUrl = `${window.location.origin}/guest/${share.code}`
-    navigator.clipboard.writeText(shareUrl)
+    const shareUrl = `${window.location.origin}/guest`
+    const accessCode = share.code
+    
+    // 复制可以直接在浏览器中访问的完整链接
+    const shareText = `${shareUrl}?code=${accessCode}`
+    
+    navigator.clipboard.writeText(shareText)
       .then(() => message.success('分享链接已复制到剪贴板'))
       .catch(() => message.error('复制失败'))
   }
@@ -207,6 +212,15 @@ const ShareManagement = () => {
       dataIndex: 'folderAlias',
       key: 'folderAlias',
       render: (text) => <Text strong>{text}</Text>
+    },
+    {
+      title: '访问链接',
+      key: 'shareUrl',
+      render: (record) => (
+        <Text code copyable={{ text: `${window.location.origin}/guest?code=${record.code}` }}>
+          {window.location.origin}/guest?code={record.code}
+        </Text>
+      )
     },
     {
       title: '访问码',

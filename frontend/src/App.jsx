@@ -22,6 +22,7 @@ function App() {
     <div className="App">
       <Routes>
         <Route path="/login" element={<Login />} />
+        <Route path="/guest" element={<GuestAccess />} />
         <Route path="/guest/:code" element={<GuestAccess />} />
         <Route path="/" element={isAuthenticated ? <Layout /> : <Navigate to="/login" />}>
           <Route index element={<Navigate to="/dashboard" />} />

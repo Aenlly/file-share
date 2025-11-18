@@ -13,7 +13,7 @@ const useAuthStore = create(
       login: async (username, password) => {
         set({ isLoading: true })
         try {
-          const response = await api.post('/login', { username, password })
+          const response = await api.post('/users/login', { username, password })
           const { token, user } = response.data
           
           set({

@@ -47,7 +47,7 @@ apiClient.interceptors.response.use(
  * ================================
  */
 export const login = (username, password) =>
-    apiClient.post('/login', { username, password })
+    apiClient.post('/users/login', { username, password })
 
 /**
  * ================================

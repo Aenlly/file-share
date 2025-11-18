@@ -17,7 +17,7 @@
 </div>
 <script>
     async function verifyCode() {
-        const code = document.getElementById('codeInput').value.trim().toUpperCase()
+        const code = document.getElementById('codeInput').value.trim()
         const res = await fetch(`/api/share/${code}`).then(r => r.json())
         const result = document.getElementById('result')
         if (res.error) {
