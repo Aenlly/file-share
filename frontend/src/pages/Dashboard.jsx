@@ -38,12 +38,13 @@ const Dashboard = () => {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
 
-  // 获取文件夹列表
+  // 获取文件夹列表（只显示顶级文件夹）
   const { data: folders = [], isLoading } = useQuery(
     'folders',
     async () => {
       const response = await api.get('/folders')
-      return response.data
+      // 只显示没有父文件夹的顶级文件夹
+      return response.data.filter(folder => !folder.parentId)
     }
   )
 
@@ -90,9 +91,67 @@ const Dashboard = () => {
     },
     {
       onSuccess: (data) => {
-        message.success('分享链接创建成功')
-        setShareInfo(data)
-        setIsShareModalVisible(true)
+        // 自动复制分享链接到剪贴板
+        const baseUrl = import.meta.env.VITE_BASE_URL || window.location.origin
+        const shareUrl = `${baseUrl}/guest`
+        const accessCode = data.code
+        const shareText = `${shareUrl}?code=${accessCode}`
+        
+        // 使用多种方法尝试复制到剪贴板
+        const copyToClipboard = (text) => {
+          // 优先使用现代API
+          if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(text).then(
+              () => {
+                message.success('分享链接创建成功并已复制到剪贴板')
+                setShareInfo(data)
+                setIsShareModalVisible(true)
+              },
+              () => {
+                // 如果失败，尝试备用方法
+                fallbackCopyToClipboard(text)
+              }
+            )
+          } else {
+            // 使用备用方法
+            fallbackCopyToClipboard(text)
+          }
+        }
+        
+        // 备用复制方法
+        const fallbackCopyToClipboard = (text) => {
+          try {
+            // 创建临时文本区域
+            const textArea = document.createElement('textarea')
+            textArea.value = text
+            textArea.style.position = 'fixed'
+            textArea.style.left = '-999999px'
+            textArea.style.top = '-999999px'
+            document.body.appendChild(textArea)
+            textArea.focus()
+            textArea.select()
+            
+            const successful = document.execCommand('copy')
+            document.body.removeChild(textArea)
+            
+            if (successful) {
+              message.success('分享链接创建成功并已复制到剪贴板')
+              setShareInfo(data)
+              setIsShareModalVisible(true)
+            } else {
+              message.success('分享链接创建成功，但复制失败')
+              setShareInfo(data)
+              setIsShareModalVisible(true)
+            }
+          } catch (err) {
+            message.success('分享链接创建成功，但复制失败')
+            setShareInfo(data)
+            setIsShareModalVisible(true)
+          }
+        }
+        
+        // 执行复制
+        copyToClipboard(shareText)
       },
       onError: (error) => {
         message.error(error.response?.data?.error || '创建分享失败')

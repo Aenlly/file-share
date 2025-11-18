@@ -82,6 +82,7 @@ const deleteShare = (req, res) => {
 const verifyShare = (req, res) => {
     try {
         const { code } = req.params;
+        const { folderId } = req.query;
         // 访问码区分大小写，直接使用原始输入
         const share = Share.findByCode(code);
         
@@ -94,10 +95,37 @@ const verifyShare = (req, res) => {
         }
         
         const folders = Folder.getAll();
-        const folder = folders.find(f => f.id === share.folderId);
         
+        // 如果指定了folderId参数，则获取该子文件夹
+        let targetFolderId = folderId ? parseInt(folderId) : share.folderId;
+        let folder = folders.find(f => f.id === targetFolderId);
+        
+        // 检查文件夹是否存在
         if (!folder) {
             return res.status(404).json({ error: '文件夹不存在' });
+        }
+        
+        // 检查文件夹是否属于分享的文件夹或其子文件夹
+        if (targetFolderId !== share.folderId) {
+            // 检查是否是子文件夹
+            let isSubFolder = false;
+            let currentFolderId = targetFolderId;
+            
+            while (currentFolderId) {
+                const currentFolder = folders.find(f => f.id === currentFolderId);
+                if (!currentFolder) break;
+                
+                if (currentFolder.id === share.folderId) {
+                    isSubFolder = true;
+                    break;
+                }
+                
+                currentFolderId = currentFolder.parentId;
+            }
+            
+            if (!isSubFolder) {
+                return res.status(403).json({ error: '无权访问此文件夹' });
+            }
         }
         
         // 获取文件夹文件列表
@@ -107,7 +135,7 @@ const verifyShare = (req, res) => {
         if (fs.existsSync(dirPath)) {
             // 先从文件模型中获取文件信息
             const File = require('../models/File');
-            const fileRecords = File.findByFolder(share.folderId);
+            const fileRecords = File.findByFolder(targetFolderId);
             
             // 获取物理文件列表
             const rawFiles = fs.readdirSync(dirPath).filter(f => fsNative.statSync(path.join(dirPath, f)).isFile());
@@ -149,9 +177,26 @@ const verifyShare = (req, res) => {
             }
         }
         
+        // 获取子文件夹列表
+        const allFolders = Folder.getAll();
+        const subFolders = allFolders.filter(f => f.parentId === targetFolderId);
+        
+        // 调试信息
+        console.log('Target folder ID:', targetFolderId);
+        console.log('All folders:', allFolders);
+        console.log('Sub folders:', subFolders);
+        
+        // 格式化子文件夹信息
+        const formattedSubFolders = subFolders.map(subFolder => ({
+            id: subFolder.id,
+            alias: subFolder.alias,
+            // 不包含敏感信息如physicalPath
+        }));
+        
         res.json({
             alias: folder.alias,
             files,
+            subFolders: formattedSubFolders,
             share: {
                 code: share.code,
                 expireTime: share.expireTime

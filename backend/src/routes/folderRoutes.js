@@ -6,7 +6,9 @@ const { FILES_ROOT } = require('../utils/fileHelpers');
 const {
     getFolders,
     createFolder,
-    deleteFolder
+    deleteFolder,
+    getSubFolders,
+    getFolderHierarchy
 } = require('../controllers/folderController');
 const {
     getFiles,
@@ -79,6 +81,12 @@ router.post('/', authenticate, createFolder);
 
 // 删除文件夹
 router.delete('/:id', authenticate, deleteFolder);
+
+// 获取子文件夹
+router.get('/:parentId/subfolders', authenticate, getSubFolders);
+
+// 获取文件夹层级结构
+router.get('/hierarchy', authenticate, getFolderHierarchy);
 
 // 获取文件夹文件列表
 router.get('/:folderId/files', authenticate, getFiles);

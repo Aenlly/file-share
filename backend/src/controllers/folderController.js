@@ -45,10 +45,11 @@ const getFolders = (req, res) => {
 // 创建文件夹
 const createFolder = (req, res) => {
     try {
-        const { alias } = req.body;
+        const { alias, parentId } = req.body;
         const folder = Folder.create({
             alias,
-            owner: req.user.username
+            owner: req.user.username,
+            parentId
         });
         res.json(folder);
     } catch (error) {
@@ -73,8 +74,31 @@ const deleteFolder = (req, res) => {
     }
 };
 
+// 获取子文件夹
+const getSubFolders = (req, res) => {
+    try {
+        const parentId = req.params.parentId;
+        const folders = Folder.findByParentId(parseInt(parentId), req.user.username);
+        res.json(folders);
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+};
+
+// 获取文件夹层级结构
+const getFolderHierarchy = (req, res) => {
+    try {
+        const folders = Folder.getFolderHierarchy(req.user.username);
+        res.json(folders);
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+};
+
 module.exports = {
     getFolders,
     createFolder,
-    deleteFolder
+    deleteFolder,
+    getSubFolders,
+    getFolderHierarchy
 };

@@ -50,6 +50,8 @@ const FolderDetail = () => {
   const [selectedRowKeys, setSelectedRowKeys] = useState([]) // 选中的文件
   const queryClient = useQueryClient()
   const [isMobile, setIsMobile] = useState(false)
+  const [createSubFolderModalVisible, setCreateSubFolderModalVisible] = useState(false)
+  const [subFolderName, setSubFolderName] = useState('')
 
   // 获取文件夹信息
   const { data: folder, isLoading: folderLoading } = useQuery(
@@ -61,6 +63,20 @@ const FolderDetail = () => {
     },
     {
       enabled: !!id
+    }
+  )
+
+  // 获取父文件夹信息
+  const { data: parentFolder } = useQuery(
+    ['parentFolder', folder?.parentId],
+    async () => {
+      if (!folder?.parentId) return null
+      const response = await api.get(`/folders`)
+      const folders = response.data
+      return folders.find(f => f.id === folder.parentId)
+    },
+    {
+      enabled: !!folder?.parentId
     }
   )
 
@@ -94,6 +110,37 @@ const FolderDetail = () => {
     async () => {
       const response = await api.get('/folders')
       return response.data
+    }
+  )
+
+  // 获取子文件夹
+  const { data: subFolders = [], isLoading: subFoldersLoading, refetch: refetchSubFolders } = useQuery(
+    ['subFolders', id],
+    async () => {
+      const response = await api.get(`/folders/${id}/subfolders`)
+      return response.data
+    },
+    {
+      enabled: !!id
+    }
+  )
+
+  // 创建子文件夹
+  const createSubFolderMutation = useMutation(
+    async (folderData) => {
+      const response = await api.post('/folders', folderData)
+      return response.data
+    },
+    {
+      onSuccess: () => {
+        message.success('子文件夹创建成功')
+        setCreateSubFolderModalVisible(false)
+        setSubFolderName('')
+        refetchSubFolders()
+      },
+      onError: (error) => {
+        message.error(error.response?.data?.error || '创建子文件夹失败')
+      }
     }
   )
 
@@ -382,6 +429,19 @@ const FolderDetail = () => {
   const handleDeleteFile = (file) => {
     deleteFileMutation.mutate(file)
   }
+
+  // 创建子文件夹
+  const handleCreateSubFolder = () => {
+    if (!subFolderName.trim()) {
+      message.error('请输入文件夹名称')
+      return
+    }
+    
+    createSubFolderMutation.mutate({
+      alias: subFolderName,
+      parentId: parseInt(id)
+    })
+  }
   
   // 批量删除文件
   const handleBatchDelete = () => {
@@ -493,7 +553,15 @@ const FolderDetail = () => {
       })
       
       setShareCode(response.data.code)
-      message.success('分享链接生成成功')
+      
+      // 自动复制分享链接到剪贴板
+      const shareUrl = `${window.location.origin}/guest`
+      const accessCode = response.data.code
+      const shareText = `${shareUrl}?code=${accessCode}`
+      
+      navigator.clipboard.writeText(shareText)
+        .then(() => message.success('分享链接生成成功并已复制到剪贴板'))
+        .catch(() => message.success('分享链接生成成功，但复制失败'))
     } catch (error) {
       message.error('生成分享链接失败')
       console.error('生成分享链接失败:', error)
@@ -647,7 +715,14 @@ const FolderDetail = () => {
         <Space direction={isMobile ? 'vertical' : 'horizontal'}>
           <Button 
             icon={<ArrowLeftOutlined />}
-            onClick={() => navigate('/dashboard')}
+            onClick={() => {
+              // 如果有父文件夹，返回到父文件夹；否则返回到Dashboard
+              if (parentFolder) {
+                navigate(`/folder/${parentFolder.id}`)
+              } else {
+                navigate('/dashboard')
+              }
+            }}
           >
             返回
           </Button>
@@ -713,6 +788,60 @@ const FolderDetail = () => {
             >
               {uploading ? '上传中...' : '开始上传'}
             </Button>
+          </div>
+        )}
+      </Card>
+
+      {/* 子文件夹列表 */}
+      <Card style={{ marginBottom: 24 }}>
+        <div style={{ marginBottom: 16, display: 'flex', justifyContent: 'space-between' }}>
+          <span>子文件夹</span>
+          <Button 
+            type="primary" 
+            icon={<FileOutlined />}
+            onClick={() => setCreateSubFolderModalVisible(true)}
+          >
+            创建子文件夹
+          </Button>
+        </div>
+        
+        {subFolders.length > 0 ? (
+          <Table
+            dataSource={subFolders}
+            rowKey="id"
+            pagination={false}
+            size="small"
+            columns={[
+              {
+                title: '文件夹名称',
+                dataIndex: 'alias',
+                key: 'alias',
+                render: (text, record) => (
+                  <Button 
+                    type="link" 
+                    onClick={() => navigate(`/folder/${record.id}`)}
+                  >
+                    <FileOutlined /> {text}
+                  </Button>
+                )
+              },
+              {
+                title: '操作',
+                key: 'action',
+                render: (_, record) => (
+                  <Button 
+                    type="link" 
+                    onClick={() => navigate(`/folder/${record.id}`)}
+                  >
+                    打开
+                  </Button>
+                )
+              }
+            ]}
+          />
+        ) : (
+          <div style={{ textAlign: 'center', padding: '20px', color: '#999' }}>
+            暂无子文件夹
           </div>
         )}
       </Card>
@@ -910,6 +1039,28 @@ const FolderDetail = () => {
               objectFit: 'contain',
               display: 'block'
             }}
+          />
+        </div>
+      </Modal>
+
+      {/* 创建子文件夹模态框 */}
+      <Modal
+        title="创建子文件夹"
+        open={createSubFolderModalVisible}
+        onOk={handleCreateSubFolder}
+        onCancel={() => {
+          setCreateSubFolderModalVisible(false)
+          setSubFolderName('')
+        }}
+        confirmLoading={createSubFolderMutation.isLoading}
+      >
+        <div style={{ marginBottom: 16 }}>
+          <Text>文件夹名称:</Text>
+          <Input 
+            value={subFolderName}
+            onChange={(e) => setSubFolderName(e.target.value)}
+            placeholder="请输入子文件夹名称"
+            style={{ marginTop: 8 }}
           />
         </div>
       </Modal>

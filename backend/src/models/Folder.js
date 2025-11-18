@@ -47,10 +47,47 @@ class Folder {
         return folders.filter(f => f.owner === owner);
     }
     
+    static findByParentId(parentId, owner) {
+        const folders = this.getAll();
+        return folders.filter(f => f.parentId === parentId && f.owner === owner);
+    }
+    
+    static getFolderHierarchy(owner) {
+        const folders = this.findByOwner(owner);
+        const folderMap = {};
+        const rootFolders = [];
+        
+        // 创建文件夹映射
+        folders.forEach(folder => {
+            folderMap[folder.id] = { ...folder, children: [] };
+        });
+        
+        // 构建层级结构
+        folders.forEach(folder => {
+            if (folder.parentId && folderMap[folder.parentId]) {
+                folderMap[folder.parentId].children.push(folderMap[folder.id]);
+            } else {
+                rootFolders.push(folderMap[folder.id]);
+            }
+        });
+        
+        return rootFolders;
+    }
+    
     static create(folderData) {
         const folders = this.getAll();
         
-        const physicalPath = `${folderData.owner}/${Date.now()}`;
+        // 如果有父文件夹，获取父文件夹信息
+        let parentPhysicalPath = '';
+        if (folderData.parentId) {
+            const parentFolder = folders.find(f => f.id === folderData.parentId && f.owner === folderData.owner);
+            if (!parentFolder) {
+                throw new Error('父文件夹不存在或无权访问');
+            }
+            parentPhysicalPath = parentFolder.physicalPath + '/';
+        }
+        
+        const physicalPath = `${folderData.owner}/${parentPhysicalPath}${Date.now()}`;
         const fullPath = path.join(FILES_ROOT, physicalPath);
         fs.ensureDirSync(fullPath);
         
@@ -58,7 +95,8 @@ class Folder {
             id: Date.now(),
             alias: folderData.alias,
             physicalPath,
-            owner: folderData.owner
+            owner: folderData.owner,
+            parentId: folderData.parentId || null
         };
         
         folders.push(newFolder);
