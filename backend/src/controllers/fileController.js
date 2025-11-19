@@ -589,40 +589,42 @@ const downloadSharedFiles = async (req, res) => {
         
         // 递归函数，用于添加文件夹及其子文件夹中的所有文件到ZIP
         const addFilesToZip = (zip, currentFolder, currentPath = '') => {
+            console.log(`Processing folder: ${currentFolder.alias}, path: ${currentPath}`);
             const currentDirPath = path.join(FILES_ROOT, currentFolder.physicalPath);
-            const files = fs.readdirSync(currentDirPath);
             
             // 获取当前文件夹中的所有文件记录
             const allFiles = File.getAll();
             const folderFiles = allFiles.filter(f => f.folderId === currentFolder.id);
+            console.log(`Found ${folderFiles.length} file records in folder`);
             
-            for (const file of files) {
-                const filePath = path.join(currentDirPath, file);
-                const stats = fs.statSync(filePath);
+            // 添加当前文件夹中的所有文件
+            for (const fileRecord of folderFiles) {
+                const filePath = path.join(currentDirPath, fileRecord.savedName);
                 
-                if (stats.isFile()) {
-                    // 查找文件的记录，使用savedName匹配文件系统中的文件名
-                    const fileRecord = folderFiles.find(f => f.savedName === file);
-                    
-                    // 使用原始文件名，如果没有找到则使用原始文件名
-                    const displayName = fileRecord ? fileRecord.originalName : file;
+                if (fs.existsSync(filePath)) {
+                    // 使用原始文件名
+                    const displayName = fileRecord.originalName;
                     
                     // 添加文件到ZIP，保持相对路径
                     const fileContent = fs.readFileSync(filePath);
                     const relativePath = currentPath ? `${currentPath}/${displayName}` : displayName;
+                    console.log(`Adding file to ZIP: ${relativePath}`);
                     zip.file(relativePath, fileContent);
-                } else if (stats.isDirectory()) {
-                    // 如果是子目录，递归处理
-                    const subFolders = Folder.getAll();
-                    const subFolder = subFolders.find(f => 
-                        f.physicalPath === path.join(currentFolder.physicalPath, file)
-                    );
-                    
-                    if (subFolder) {
-                        const subPath = currentPath ? `${currentPath}/${subFolder.alias}` : subFolder.alias;
-                        addFilesToZip(zip, subFolder, subPath);
-                    }
+                } else {
+                    console.log(`File not found: ${filePath}`);
                 }
+            }
+            
+            // 获取所有子文件夹
+            const allFolders = Folder.getAll();
+            const subFolders = allFolders.filter(f => f.parentId === currentFolder.id);
+            console.log(`Found ${subFolders.length} subfolders`);
+            
+            // 递归处理所有子文件夹
+            for (const subFolder of subFolders) {
+                const subPath = currentPath ? `${currentPath}/${subFolder.alias}` : subFolder.alias;
+                console.log(`Processing subfolder: ${subFolder.alias}`);
+                addFilesToZip(zip, subFolder, subPath);
             }
         };
         
