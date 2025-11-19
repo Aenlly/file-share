@@ -32,6 +32,8 @@ const GuestAccess = () => {
   const [downloading, setDownloading] = useState(false)
   const [isMobile, setIsMobile] = useState(false)
   const [hasSubmitted, setHasSubmitted] = useState(false)
+  const [refreshKey, setRefreshKey] = useState(0) // 添加刷新键来强制重新渲染
+  const [currentFolderId, setCurrentFolderId] = useState(null) // 添加当前文件夹ID状态
   const queryClient = useQueryClient()
   const [searchParams] = useSearchParams()
   const location = useLocation()
@@ -60,6 +62,15 @@ const GuestAccess = () => {
   // 获取URL参数中的folderId
   const folderIdFromUrl = searchParams.get('folderId')
   
+  // 创建一个函数来获取当前URL参数
+  const getCurrentUrlParams = () => {
+    const params = new URLSearchParams(location.search)
+    return {
+      code: params.get('code'),
+      folderId: params.get('folderId')
+    }
+  }
+  
   // 当URL参数变化时，重新获取访问码
   useEffect(() => {
     const codeFromUrl = searchParams.get('code')
@@ -69,20 +80,13 @@ const GuestAccess = () => {
     }
   }, [searchParams])
   
-  // 当location变化时，强制重新获取数据
-  useEffect(() => {
-    // 当URL变化时，强制重新获取数据
-    if (hasSubmitted && accessCode) {
-      refetch()
-    }
-  }, [location, hasSubmitted, accessCode])
-  
   // 获取分享内容
   const { data: shareData, isLoading, error, refetch } = useQuery(
-    ['share', accessCode, folderIdFromUrl],
+    ['share', currentFolderId, refreshKey, accessCode], // 使用状态中的currentFolderId
     async () => {
-      const url = folderIdFromUrl 
-        ? `/share/${accessCode}?folderId=${folderIdFromUrl}`
+      // 使用状态中的currentFolderId，而不是从URL解析
+      const url = currentFolderId 
+        ? `/share/${accessCode}?folderId=${currentFolderId}`
         : `/share/${accessCode}`
       const response = await api.get(url)
       return response.data
@@ -92,6 +96,14 @@ const GuestAccess = () => {
       retry: false
     }
   )
+
+  // 当location变化时，强制重新获取数据
+  useEffect(() => {
+    // 当URL变化时，强制重新获取数据
+    if (hasSubmitted && accessCode) {
+      refetch()
+    }
+  }, [location, hasSubmitted, accessCode, refetch])
 
   // 处理访问码提交
   const handleAccessCodeSubmit = (value) => {
@@ -199,12 +211,15 @@ const GuestAccess = () => {
               type="link" 
               icon={<LeftOutlined />}
               onClick={() => {
-                const currentCode = accessCode || searchParams.get('code');
-                if (folderIdFromUrl) {
+                const { code: currentCode, folderId } = getCurrentUrlParams();
+                if (folderId) {
                   // 返回到根文件夹
                   const rootUrl = `/guest?code=${currentCode}`;
                   window.history.pushState({}, '', rootUrl);
-                  // 不需要手动调用refetch，useEffect会处理URL变化
+                  // 直接更新状态，强制重新获取数据
+                  setAccessCode(currentCode);
+                  setCurrentFolderId(null); // 清除文件夹ID，返回根目录
+                  setRefreshKey(prev => prev + 1);
                 } else {
                   // 返回到访问码输入页面
                   setHasSubmitted(false);
@@ -229,10 +244,13 @@ const GuestAccess = () => {
                   icon={<LeftOutlined />}
                   onClick={() => {
                     // 返回到父文件夹
-                    const currentCode = accessCode || searchParams.get('code');
+                    const { code: currentCode } = getCurrentUrlParams();
                     const parentUrl = `/guest?code=${currentCode}`;
                     window.history.pushState({}, '', parentUrl);
-                    // 不需要手动调用refetch，useEffect会处理URL变化
+                    // 直接更新状态，强制重新获取数据
+                    setAccessCode(currentCode);
+                    setCurrentFolderId(null); // 清除文件夹ID，返回根目录
+                    setRefreshKey(prev => prev + 1);
                   }}
                   size="small"
                 >
@@ -292,10 +310,13 @@ const GuestAccess = () => {
                     icon={<FolderOpenOutlined />}
                     onClick={() => {
                       // 更新URL参数，触发重新查询
-                      const currentCode = accessCode || searchParams.get('code');
+                      const { code: currentCode } = getCurrentUrlParams();
                       const newUrl = `/guest?code=${currentCode}&folderId=${item.id}`;
                       window.history.pushState({}, '', newUrl);
-                      // 不需要手动调用refetch，useEffect会处理URL变化
+                      // 直接更新状态，强制重新获取数据
+                      setAccessCode(currentCode);
+                      setCurrentFolderId(item.id); // 设置当前文件夹ID
+                      setRefreshKey(prev => prev + 1);
                     }}
                   >
                     打开

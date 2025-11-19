@@ -36,8 +36,8 @@ api.interceptors.response.use(
     return response
   },
   (error) => {
-    // 只有在非登录页面的情况下才处理401错误
-    if (error.response?.status === 401 && !window.location.pathname.includes('/login')) {
+    // 只有在非登录页面的情况下才处理401和403错误
+    if ((error.response?.status === 401 || error.response?.status === 403) && !window.location.pathname.includes('/login')) {
       // 清除本地存储的认证信息
       localStorage.removeItem('auth-storage')
       // 重定向到登录页
