@@ -143,6 +143,22 @@ const FolderDetail = () => {
       }
     }
   )
+  
+  // 删除子文件夹
+  const deleteSubFolderMutation = useMutation(
+    async (folderId) => {
+      await api.delete(`/folders/${folderId}`)
+    },
+    {
+      onSuccess: () => {
+        message.success('子文件夹删除成功')
+        refetchSubFolders()
+      },
+      onError: (error) => {
+        message.error(error.response?.data?.error || '删除子文件夹失败')
+      }
+    }
+  )
 
   // 分片上传单个文件
   const uploadFileInChunks = async (file) => {
@@ -441,6 +457,11 @@ const FolderDetail = () => {
       alias: subFolderName,
       parentId: parseInt(id)
     })
+  }
+  
+  // 删除子文件夹
+  const handleDeleteSubFolder = (folderId) => {
+    deleteSubFolderMutation.mutate(folderId)
   }
   
   // 批量删除文件
@@ -829,12 +850,29 @@ const FolderDetail = () => {
                 title: '操作',
                 key: 'action',
                 render: (_, record) => (
-                  <Button 
-                    type="link" 
-                    onClick={() => navigate(`/folder/${record.id}`)}
-                  >
-                    打开
-                  </Button>
+                  <Space>
+                    <Button 
+                      type="link" 
+                      onClick={() => navigate(`/folder/${record.id}`)}
+                    >
+                      打开
+                    </Button>
+                    <Popconfirm
+                      title="确定要删除这个子文件夹吗？"
+                      description="删除后将无法恢复，文件夹中的所有文件也会被删除。"
+                      onConfirm={() => handleDeleteSubFolder(record.id)}
+                      okText="确定"
+                      cancelText="取消"
+                    >
+                      <Button 
+                        type="link" 
+                        danger
+                        icon={<DeleteOutlined />}
+                      >
+                        删除
+                      </Button>
+                    </Popconfirm>
+                  </Space>
                 )
               }
             ]}
