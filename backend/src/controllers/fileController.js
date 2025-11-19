@@ -558,6 +558,8 @@ const downloadSharedFile = (req, res) => {
 const downloadSharedFiles = async (req, res) => {
     try {
         const { code } = req.params;
+        const { folderId } = req.query; // 获取可选的folderId参数
+        
         // 访问码区分大小写，直接使用原始输入
         const shares = require('../models/Share').getAll();
         const share = shares.find(s => s.code === code);
@@ -570,8 +572,10 @@ const downloadSharedFiles = async (req, res) => {
             return res.status(410).json({ error: '分享链接已过期' });
         }
         
+        // 确定要下载的文件夹
+        let targetFolderId = folderId || share.folderId;
         const folders = Folder.getAll();
-        const folder = folders.find(f => f.id === share.folderId);
+        const folder = folders.find(f => f.id === targetFolderId);
         
         if (!folder) {
             return res.status(404).json({ error: '文件夹不存在' });
@@ -583,29 +587,63 @@ const downloadSharedFiles = async (req, res) => {
             return res.status(404).json({ error: '文件夹不存在' });
         }
         
+        // 递归函数，用于添加文件夹及其子文件夹中的所有文件到ZIP
+        const addFilesToZip = (zip, currentFolder, currentPath = '') => {
+            const currentDirPath = path.join(FILES_ROOT, currentFolder.physicalPath);
+            const files = fs.readdirSync(currentDirPath);
+            
+            // 获取当前文件夹中的所有文件记录
+            const allFiles = File.getAll();
+            const folderFiles = allFiles.filter(f => f.folderId === currentFolder.id);
+            
+            for (const file of files) {
+                const filePath = path.join(currentDirPath, file);
+                const stats = fs.statSync(filePath);
+                
+                if (stats.isFile()) {
+                    // 查找文件的记录，使用savedName匹配文件系统中的文件名
+                    const fileRecord = folderFiles.find(f => f.savedName === file);
+                    
+                    // 使用原始文件名，如果没有找到则使用原始文件名
+                    const displayName = fileRecord ? fileRecord.originalName : file;
+                    
+                    // 添加文件到ZIP，保持相对路径
+                    const fileContent = fs.readFileSync(filePath);
+                    const relativePath = currentPath ? `${currentPath}/${displayName}` : displayName;
+                    zip.file(relativePath, fileContent);
+                } else if (stats.isDirectory()) {
+                    // 如果是子目录，递归处理
+                    const subFolders = Folder.getAll();
+                    const subFolder = subFolders.find(f => 
+                        f.physicalPath === path.join(currentFolder.physicalPath, file)
+                    );
+                    
+                    if (subFolder) {
+                        const subPath = currentPath ? `${currentPath}/${subFolder.alias}` : subFolder.alias;
+                        addFilesToZip(zip, subFolder, subPath);
+                    }
+                }
+            }
+        };
+        
+        // 检查文件夹是否为空
         const files = fs.readdirSync(dirPath);
         if (files.length === 0) {
             return res.status(404).json({ error: '文件夹为空' });
         }
         
-        // 如果只有一个文件，直接下载
-        if (files.length === 1) {
+        // 如果只有一个文件且没有子文件夹，直接下载
+        const hasSubFolders = folders.some(f => f.parentId === folder.id);
+        if (files.length === 1 && !hasSubFolders) {
             const filePath = path.join(dirPath, files[0]);
             return res.download(filePath, files[0]);
         }
         
-        // 多个文件，打包成ZIP
+        // 多个文件或有子文件夹，打包成ZIP
         const zip = new JSZip();
         
-        for (const file of files) {
-            const filePath = path.join(dirPath, file);
-            const stats = fs.statSync(filePath);
-            
-            if (stats.isFile()) {
-                const fileContent = fs.readFileSync(filePath);
-                zip.file(file, fileContent);
-            }
-        }
+        // 添加当前文件夹及其子文件夹中的所有文件
+        addFilesToZip(zip, folder);
         
         const zipContent = await zip.generateAsync({ type: 'nodebuffer' });
         const zipFileName = `${folder.alias}.zip`;

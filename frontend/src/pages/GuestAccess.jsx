@@ -122,7 +122,11 @@ const GuestAccess = () => {
   const handleDownloadAll = async () => {
     setDownloading(true)
     try {
-      window.open(`/api/share/${accessCode}/download`, '_blank')
+      // 如果有当前文件夹ID，则传递给后端
+      const downloadUrl = currentFolderId 
+        ? `/api/share/${accessCode}/download?folderId=${currentFolderId}`
+        : `/api/share/${accessCode}/download`;
+      window.open(downloadUrl, '_blank')
     } catch (error) {
       message.error('下载失败')
     } finally {
