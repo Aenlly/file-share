@@ -26,6 +26,7 @@ import { useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from 'react-query'
 import dayjs from 'dayjs'
 import api from '../utils/api'
+import { useAuthStore } from '../stores/authStore'
 
 const { Title, Text } = Typography
 
@@ -39,12 +40,16 @@ const Dashboard = () => {
   const queryClient = useQueryClient()
 
   // 获取文件夹列表（只显示顶级文件夹）
+  const { user } = useAuthStore()
   const { data: folders = [], isLoading } = useQuery(
-    'folders',
+    ['folders', user?.username || 'anonymous'], // 使用用户特定的查询键
     async () => {
       const response = await api.get('/folders')
       // 只显示没有父文件夹的顶级文件夹
       return response.data.filter(folder => !folder.parentId)
+    },
+    {
+      enabled: !!user // 只有用户登录时才执行查询
     }
   )
 
@@ -59,7 +64,7 @@ const Dashboard = () => {
         message.success('文件夹创建成功')
         setIsModalVisible(false)
         form.resetFields()
-        queryClient.invalidateQueries('folders')
+        queryClient.invalidateQueries(['folders', user?.username || 'anonymous'])
       },
       onError: (error) => {
         message.error(error.response?.data?.error || '创建文件夹失败')
@@ -75,7 +80,7 @@ const Dashboard = () => {
     {
       onSuccess: () => {
         message.success('文件夹删除成功')
-        queryClient.invalidateQueries('folders')
+        queryClient.invalidateQueries(['folders', user?.username || 'anonymous'])
       },
       onError: (error) => {
         message.error(error.response?.data?.error || '删除文件夹失败')

@@ -27,6 +27,7 @@ import {
 import { useQuery, useMutation, useQueryClient } from 'react-query'
 import dayjs from 'dayjs'
 import api from '../utils/api'
+import { useAuthStore } from '../stores/authStore'
 
 const { Title, Text } = Typography
 const { Dragger } = Upload
@@ -105,11 +106,15 @@ const FolderDetail = () => {
   )
 
   // 获取所有文件夹（用于移动文件）
+  const { user } = useAuthStore()
   const { data: allFolders = [] } = useQuery(
-    'folders',
+    ['folders', user?.username || 'anonymous'], // 使用用户特定的查询键
     async () => {
       const response = await api.get('/folders')
       return response.data
+    },
+    {
+      enabled: !!user // 只有用户登录时才执行查询
     }
   )
 
@@ -156,6 +161,25 @@ const FolderDetail = () => {
       },
       onError: (error) => {
         message.error(error.response?.data?.error || '删除子文件夹失败')
+      }
+    }
+  )
+  
+  // 移动文件
+  const moveFileMutation = useMutation(
+    async ({ filename, targetFolderId }) => {
+      await api.post(`/folders/${id}/move`, { filename, targetFolderId })
+    },
+    {
+      onSuccess: () => {
+        message.success('文件移动成功')
+        refetch()
+        setMoveModalVisible(false)
+        setSelectedFile(null)
+        setTargetFolder('')
+      },
+      onError: (error) => {
+        message.error(error.response?.data?.error || '移动文件失败')
       }
     }
   )
@@ -325,7 +349,8 @@ const FolderDetail = () => {
     async (files) => {
       // 支持单个文件或文件数组
       const fileArray = Array.isArray(files) ? files : [files];
-      const filenames = fileArray.map(f => f.name);
+      // 使用savedName作为删除参数，因为这是服务器上的实际文件名
+      const filenames = fileArray.map(f => f.savedName);
       
       const response = await api.delete(`/folders/${id}/file`, { 
         data: { filenames } 
@@ -479,7 +504,7 @@ const FolderDetail = () => {
       onOk: () => {
         // 获取选中的文件对象
         const selectedFiles = files.filter(file => 
-          selectedRowKeys.includes(file.name)
+          selectedRowKeys.includes(file.id)
         );
         deleteFileMutation.mutate(selectedFiles);
       }
@@ -491,45 +516,139 @@ const FolderDetail = () => {
     setMoveModalVisible(true)
   }
 
-  const handlePreviewImage = (file) => {
-    // 获取认证信息
-    const authData = localStorage.getItem('auth-storage');
-    let token = '';
+  const handlePreviewImage = async (file) => {
+    // 使用savedName作为预览参数，因为这是服务器上的实际文件名
+    let savedName = file.savedName;
+    let displayName = file.name; // 显示名称仍然是原始文件名
     
-    if (authData) {
-      try {
-        const { state } = JSON.parse(authData);
-        if (state.token) {
-          token = state.token;
-        }
-      } catch (error) {
-        console.error('解析认证数据失败', error);
-      }
-    }
+    // 添加调试信息
+    console.log('预览文件信息:', {
+      id: file.id,
+      name: file.name,
+      savedName: file.savedName,
+      isImage: isImageFile(file.name)
+    });
     
-    // 使用显示名称作为预览参数
-    let displayName = file.name;
-    
-    // 确保文件名使用UTF-8编码
-    try {
-      // 如果文件名包含非ASCII字符，确保使用UTF-8编码
-      if (/[^\\x00-\\x7F]/.test(file.name)) {
-        // 使用TextEncoder确保UTF-8编码
-        const encoder = new TextEncoder();
-        const uint8Array = encoder.encode(file.name);
-        displayName = new TextDecoder('utf-8').decode(uint8Array);
-      }
-    } catch (e) {
-      console.error('文件名编码转换失败:', e);
-      displayName = file.name;
-    }
-    
-    // 打开图片预览模态框
+    // 先打开模态框显示加载状态
     setPreviewImage({
       visible: true,
-      src: `/api/folders/${id}/preview/${encodeURIComponent(displayName)}?width=800&height=600&token=${token}`,
-      name: displayName
-    })
+      src: `/api/folders/${id}/preview/${encodeURIComponent(savedName)}?width=800&height=600`,
+      name: displayName,
+      loading: true
+    });
+    
+    try {
+      // 获取认证信息
+      const authData = localStorage.getItem('auth-storage');
+      let headers = {};
+      
+      if (authData) {
+        try {
+          const { state } = JSON.parse(authData);
+          if (state.token) {
+            headers.Authorization = `Bearer ${state.token}`;
+          }
+        } catch (error) {
+          console.error('解析认证数据失败', error);
+        }
+      }
+      
+      // 使用完整的URL获取图片，绕过Vite代理
+      const previewUrl = `http://localhost:3000/api/folders/${id}/preview/${encodeURIComponent(savedName)}?width=800&height=600`;
+      console.log('预览URL:', previewUrl);
+      
+      const response = await fetch(previewUrl, {
+        headers
+      });
+      
+      if (!response.ok) {
+        // 如果使用savedName失败，尝试使用原始文件名
+        if (response.status === 400 || response.status === 404) {
+          console.log('使用savedName失败，尝试使用原始文件名');
+          const fallbackUrl = `http://localhost:3000/api/folders/${id}/preview/${encodeURIComponent(displayName)}?width=800&height=600`;
+          console.log('备用预览URL:', fallbackUrl);
+          
+          const fallbackResponse = await fetch(fallbackUrl, {
+            headers
+          });
+          
+          if (!fallbackResponse.ok) {
+            // 尝试获取错误详情
+            const errorText = await fallbackResponse.text();
+            console.error('备用预览也失败，错误详情:', errorText);
+            
+            // 尝试使用文件ID查找
+            console.log('尝试使用文件ID查找');
+            const idFallbackUrl = `http://localhost:3000/api/folders/${id}/preview/by-id/${file.id}?width=800&height=600`;
+            console.log('ID预览URL:', idFallbackUrl);
+            
+            try {
+              const idFallbackResponse = await fetch(idFallbackUrl, {
+                headers
+              });
+              
+              if (idFallbackResponse.ok) {
+                // 将响应转换为blob
+                const blob = await idFallbackResponse.blob();
+                
+                // 创建blob URL
+                const blobUrl = URL.createObjectURL(blob);
+                
+                // 更新预览状态，使用blob URL
+                setPreviewImage(prev => ({
+                  ...prev,
+                  blobUrl: blobUrl,
+                  loading: false
+                }));
+                return;
+              }
+            } catch (idError) {
+              console.error('ID预览也失败:', idError);
+            }
+            
+            throw new Error(`HTTP error! status: ${fallbackResponse.status}, details: ${errorText}`);
+          }
+          
+          // 将响应转换为blob
+          const blob = await fallbackResponse.blob();
+          
+          // 创建blob URL
+          const blobUrl = URL.createObjectURL(blob);
+          
+          // 更新预览状态，使用blob URL
+          setPreviewImage(prev => ({
+            ...prev,
+            blobUrl: blobUrl,
+            loading: false
+          }));
+          return;
+        }
+        
+        // 尝试获取错误详情
+        const errorText = await response.text();
+        console.error('预览失败，错误详情:', errorText);
+        throw new Error(`HTTP error! status: ${response.status}, details: ${errorText}`);
+      }
+      
+      // 将响应转换为blob
+      const blob = await response.blob();
+      
+      // 创建blob URL
+      const blobUrl = URL.createObjectURL(blob);
+      
+      // 更新预览状态，使用blob URL
+      setPreviewImage(prev => ({
+        ...prev,
+        blobUrl: blobUrl,
+        loading: false
+      }));
+    } catch (error) {
+      console.error('获取图片预览失败:', error);
+      message.error('获取图片预览失败');
+      
+      // 关闭预览模态框
+      setPreviewImage({ visible: false, src: '', name: '' });
+    }
   }
 
   const handleDownloadFile = (file) => {
@@ -554,12 +673,11 @@ const FolderDetail = () => {
       return
     }
 
-    // 这里需要实现移动文件的API调用
-    // 当前后端API没有移动文件的功能，这是一个示例
-    message.info('移动文件功能需要后端API支持')
-    setMoveModalVisible(false)
-    setSelectedFile(null)
-    setTargetFolder('')
+    // 调用移动文件的API
+    moveFileMutation.mutate({
+      filename: selectedFile.savedName,
+      targetFolderId: targetFolder
+    })
   }
 
   // 生成分享链接
@@ -903,7 +1021,7 @@ const FolderDetail = () => {
         <Table 
           columns={columns} 
           dataSource={files} 
-          rowKey="name"
+          rowKey="id"
           loading={filesLoading}
           pagination={{ pageSize: 10 }}
           scroll={{ x: isMobile ? 800 : undefined }}
@@ -911,7 +1029,7 @@ const FolderDetail = () => {
             selectedRowKeys,
             onChange: setSelectedRowKeys,
             getCheckboxProps: (record) => ({
-              name: record.name,
+              name: record.savedName,
             }),
           }}
         />
@@ -1041,7 +1159,13 @@ const FolderDetail = () => {
       <Modal
         title={previewImage.name}
         open={previewImage.visible}
-        onCancel={() => setPreviewImage({ visible: false, src: '', name: '' })}
+        onCancel={() => {
+          setPreviewImage({ visible: false, src: '', name: '' })
+          // 清理blob URL
+          if (previewImage.blobUrl) {
+            URL.revokeObjectURL(previewImage.blobUrl)
+          }
+        }}
         footer={[
           <Button key="download" type="primary" icon={<DownloadOutlined />} onClick={() => {
             // 下载原图
@@ -1054,7 +1178,13 @@ const FolderDetail = () => {
           }}>
             下载原图
           </Button>,
-          <Button key="close" onClick={() => setPreviewImage({ visible: false, src: '', name: '' })}>
+          <Button key="close" onClick={() => {
+            setPreviewImage({ visible: false, src: '', name: '' })
+            // 清理blob URL
+            if (previewImage.blobUrl) {
+              URL.revokeObjectURL(previewImage.blobUrl)
+            }
+          }}>
             关闭
           </Button>
         ]}
@@ -1068,16 +1198,22 @@ const FolderDetail = () => {
           maxHeight: '70vh',
           overflow: 'hidden'
         }}>
-          <img 
-            src={previewImage.src} 
-            alt={previewImage.name}
-            style={{ 
-              maxWidth: '100%', 
-              maxHeight: '100%',
-              objectFit: 'contain',
-              display: 'block'
-            }}
-          />
+          {previewImage.loading ? (
+            <div>加载中...</div>
+          ) : (
+            <img 
+              src={previewImage.blobUrl || previewImage.src} 
+              alt={previewImage.name}
+              style={{ 
+                maxWidth: '100%', 
+                maxHeight: '100%',
+                width: 'auto',
+                height: 'auto',
+                objectFit: 'contain',
+                display: 'block'
+              }}
+            />
+          )}
         </div>
       </Modal>
 

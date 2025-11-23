@@ -193,10 +193,24 @@ const verifyShare = (req, res) => {
             // 不包含敏感信息如physicalPath
         }));
         
+        // 获取父文件夹信息（用于返回上级功能）
+        let parentFolder = null;
+        if (targetFolderId !== share.folderId && folder.parentId) {
+            parentFolder = allFolders.find(f => f.id === folder.parentId);
+            if (parentFolder) {
+                parentFolder = {
+                    id: parentFolder.id,
+                    alias: parentFolder.alias
+                };
+            }
+        }
+        
         res.json({
             alias: folder.alias,
             files,
             subFolders: formattedSubFolders,
+            parentFolder, // 添加父文件夹信息
+            isRootFolder: targetFolderId === share.folderId, // 标识是否为根文件夹
             share: {
                 code: share.code,
                 expireTime: share.expireTime

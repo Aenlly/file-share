@@ -215,8 +215,8 @@ const GuestAccess = () => {
               type="link" 
               icon={<LeftOutlined />}
               onClick={() => {
-                const { code: currentCode, folderId } = getCurrentUrlParams();
-                if (folderId) {
+                const { code: currentCode } = getCurrentUrlParams();
+                if (currentFolderId) {
                   // 返回到根文件夹
                   const rootUrl = `/guest?code=${currentCode}`;
                   window.history.pushState({}, '', rootUrl);
@@ -230,7 +230,7 @@ const GuestAccess = () => {
                 }
               }}
             >
-              {folderIdFromUrl ? '返回根目录' : '重新输入'}
+              {currentFolderId ? '返回根目录' : '重新输入'}
             </Button>
           </div>
         }
@@ -242,18 +242,27 @@ const GuestAccess = () => {
                 <FolderOpenOutlined style={{ marginRight: 8, color: '#1890ff' }} />
                 {shareData?.alias || '未知文件夹'}
               </div>
-              {folderIdFromUrl && (
+              {currentFolderId && !shareData.isRootFolder && (
                 <Button 
                   type="link" 
                   icon={<LeftOutlined />}
                   onClick={() => {
-                    // 返回到父文件夹
                     const { code: currentCode } = getCurrentUrlParams();
-                    const parentUrl = `/guest?code=${currentCode}`;
+                    let targetFolderId = null;
+                    
+                    // 如果有父文件夹信息，返回到父文件夹
+                    if (shareData.parentFolder) {
+                      targetFolderId = shareData.parentFolder.id;
+                    }
+                    
+                    const parentUrl = targetFolderId 
+                      ? `/guest?code=${currentCode}&folderId=${targetFolderId}`
+                      : `/guest?code=${currentCode}`;
+                    
                     window.history.pushState({}, '', parentUrl);
                     // 直接更新状态，强制重新获取数据
                     setAccessCode(currentCode);
-                    setCurrentFolderId(null); // 清除文件夹ID，返回根目录
+                    setCurrentFolderId(targetFolderId);
                     setRefreshKey(prev => prev + 1);
                   }}
                   size="small"

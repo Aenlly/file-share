@@ -15,6 +15,7 @@ const {
     uploadFile,
     deleteFile,
     getFilePreview,
+    getFilePreviewById,
     downloadFile,
     initChunkUpload,
     uploadChunk,
@@ -34,31 +35,47 @@ const upload = multer({
         try {
             let originalName = file.originalname;
             
-            // 如果文件名是Buffer，转换为UTF-8字符串
-            if (Buffer.isBuffer(originalName)) {
-                originalName = originalName.toString('utf8');
-            }
-            // 如果文件名包含非ASCII字符，尝试修复编码
-            else if (/[^\\x00-\\x7F]/.test(originalName)) {
-                // 检查是否已经是正确的UTF-8
+            // 检查是否是Base64编码的文件名（前端发送的）
+            if (originalName.startsWith('UTF8:')) {
                 try {
-                    // 尝试将字符串编码为Buffer再解码，验证是否为有效UTF-8
-                    const testBuffer = Buffer.from(originalName, 'utf8');
-                    const testString = testBuffer.toString('utf8');
-                    if (testString === originalName) {
-                        // 已经是有效的UTF-8，不需要转换
-                        originalName = testString;
-                    } else {
-                        // 可能是其他编码被错误解释为UTF-8，尝试修复
-                        originalName = Buffer.from(originalName, 'latin1').toString('utf8');
-                    }
+                    // 提取Base64部分
+                    const base64Part = originalName.substring(5);
+                    // 使用Node.js的Buffer处理Base64
+                    const bytes = Buffer.from(base64Part, 'base64');
+                    // 将Buffer转换为UTF-8字符串
+                    originalName = bytes.toString('utf8');
                 } catch (e) {
-                    // 如果验证失败，尝试修复
+                    console.error('Base64文件名解码失败:', e);
+                    // 如果解码失败，使用原始文件名
+                }
+            } else {
+                // 常规处理
+                // 如果文件名是Buffer，转换为UTF-8字符串
+                if (Buffer.isBuffer(originalName)) {
+                    originalName = originalName.toString('utf8');
+                }
+                // 如果文件名包含非ASCII字符，尝试修复编码
+                else if (/[^\\x00-\\x7F]/.test(originalName)) {
+                    // 检查是否已经是正确的UTF-8
                     try {
-                        originalName = Buffer.from(originalName, 'latin1').toString('utf8');
-                    } catch (e2) {
-                        // 如果还是失败，保持原样
-                        console.warn('无法修复文件名编码:', originalName);
+                        // 尝试将字符串编码为Buffer再解码，验证是否为有效UTF-8
+                        const testBuffer = Buffer.from(originalName, 'utf8');
+                        const testString = testBuffer.toString('utf8');
+                        if (testString === originalName) {
+                            // 已经是有效的UTF-8，不需要转换
+                            originalName = testString;
+                        } else {
+                            // 可能是其他编码被错误解释为UTF-8，尝试修复
+                            originalName = Buffer.from(originalName, 'latin1').toString('utf8');
+                        }
+                    } catch (e) {
+                        // 如果验证失败，尝试修复
+                        try {
+                            originalName = Buffer.from(originalName, 'latin1').toString('utf8');
+                        } catch (e2) {
+                            // 如果还是失败，保持原样
+                            console.warn('无法修复文件名编码:', originalName);
+                        }
                     }
                 }
             }
@@ -103,8 +120,11 @@ router.post('/:folderId/chunk', authenticate, uploadChunk);
 // 完成分块上传
 router.post('/:folderId/chunk/complete', authenticate, completeChunkUpload);
 
-// 获取图片预览（支持通过查询参数传递token）
-router.get('/:folderId/preview/:filename', getFilePreview);
+// 获取图片预览（需要认证）
+router.get('/:folderId/preview/:filename', authenticate, getFilePreview);
+
+// 通过文件ID获取图片预览（需要认证）
+router.get('/:folderId/preview/by-id/:fileId', authenticate, getFilePreviewById);
 
 // 下载文件
 router.get('/:folderId/download/:filename', authenticate, downloadFile);
