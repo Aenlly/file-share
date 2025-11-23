@@ -49,16 +49,46 @@ class File {
     
     static findByOriginalName(originalName, folderId) {
         const files = this.getAll();
-        return files.find(f => 
+        console.log(`查找文件: originalName=${originalName}, folderId=${folderId}`);
+        console.log(`所有文件:`, files.map(f => ({
+            id: f.id,
+            originalName: f.originalName,
+            folderId: f.folderId
+        })));
+        
+        const foundFile = files.find(f => 
             f.originalName === originalName && f.folderId === folderId
         );
+        
+        if (foundFile) {
+            console.log(`找到文件: ${foundFile.originalName}`);
+        } else {
+            console.log(`未找到文件: originalName=${originalName}, folderId=${folderId}`);
+        }
+        
+        return foundFile;
     }
     
     static findBySavedName(savedName, folderId) {
         const files = this.getAll();
-        return files.find(f => 
+        console.log(`查找文件: savedName=${savedName}, folderId=${folderId}`);
+        console.log(`所有文件:`, files.map(f => ({
+            id: f.id,
+            savedName: f.savedName,
+            folderId: f.folderId
+        })));
+        
+        const foundFile = files.find(f => 
             f.savedName === savedName && f.folderId === folderId
         );
+        
+        if (foundFile) {
+            console.log(`找到文件: ${foundFile.savedName}`);
+        } else {
+            console.log(`未找到文件: savedName=${savedName}, folderId=${folderId}`);
+        }
+        
+        return foundFile;
     }
     
     static create(fileData) {

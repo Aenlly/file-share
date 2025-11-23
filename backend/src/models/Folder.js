@@ -85,9 +85,12 @@ class Folder {
                 throw new Error('父文件夹不存在或无权访问');
             }
             parentPhysicalPath = parentFolder.physicalPath + '/';
+        } else {
+            // 只有根文件夹需要添加用户名前缀
+            parentPhysicalPath = folderData.owner + '/';
         }
         
-        const physicalPath = `${folderData.owner}/${parentPhysicalPath}${Date.now()}`;
+        const physicalPath = `${parentPhysicalPath}${Date.now()}`;
         const fullPath = path.join(FILES_ROOT, physicalPath);
         fs.ensureDirSync(fullPath);
         
