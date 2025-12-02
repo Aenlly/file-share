@@ -1,74 +1,153 @@
 const fs = require('fs-extra');
 const path = require('path');
 const crypto = require('crypto');
+const config = require('../config');
 
-const DATA_DIR = path.join(__dirname, '../../data');
-const FILES_ROOT = path.join(__dirname, '../../files');
+const DATA_DIR = config.database.json.dataDir;
+const FILES_ROOT = path.join(process.cwd(), 'files');
 
-// 读取JSON文件
+/**
+ * 计算文件哈希值
+ */
+const calculateFileHash = (filePath) => {
+    const hash = crypto.createHash('sha256');
+    const stream = fs.createReadStream(filePath);
+    
+    return new Promise((resolve, reject) => {
+        stream.on('data', data => hash.update(data));
+        stream.on('end', () => resolve(hash.digest('hex')));
+        stream.on('error', reject);
+    });
+};
+
+/**
+ * 检查文件类型是否安全
+ */
+const isFileTypeSafe = (filename) => {
+    const ext = path.extname(filename).toLowerCase();
+    
+    // 检查危险文件类型
+    if (config.allowedFileTypes.dangerousFileTypes && 
+        config.allowedFileTypes.dangerousFileTypes.includes(ext)) {
+        return {
+            safe: false,
+            reason: `不允许上传${ext}类型的文件`
+        };
+    }
+    
+    // 检查文件大小
+    if (config.maxFileSize && arguments[1] && arguments[1] > config.maxFileSize) {
+        return {
+            safe: false,
+            reason: `文件大小超过限制（最大${config.maxFileSize / 1024 / 1024}MB）`
+        };
+    }
+    
+    return { safe: true };
+};
+
+/**
+ * 读取JSON文件（带UTF-8编码支持）
+ */
 const readJSON = (filename) => {
-    const fullPath = path.join(DATA_DIR, filename);
-    if (!fs.existsSync(fullPath)) return [];
+    const filePath = path.join(DATA_DIR, filename);
+    
+    if (!fs.existsSync(filePath)) {
+        return [];
+    }
+
     try {
-        return JSON.parse(fs.readFileSync(fullPath, 'utf-8'));
-    } catch {
+        const buffer = fs.readFileSync(filePath);
+        const data = buffer.toString('utf8');
+        return JSON.parse(data);
+    } catch (error) {
+        console.error(`读取JSON文件失败: ${filename}`, error);
         return [];
     }
 };
 
-// 写入JSON文件
+/**
+ * 写入JSON文件（带UTF-8编码支持）
+ */
 const writeJSON = (filename, data) => {
-    fs.writeFileSync(path.join(DATA_DIR, filename), JSON.stringify(data, null, 2), 'utf-8');
+    const filePath = path.join(DATA_DIR, filename);
+    fs.ensureDirSync(path.dirname(filePath));
+    
+    try {
+        const jsonString = JSON.stringify(data, null, 2);
+        const buffer = Buffer.from(jsonString, 'utf8');
+        fs.writeFileSync(filePath, buffer);
+    } catch (error) {
+        console.error(`写入JSON文件失败: ${filename}`, error);
+        throw error;
+    }
 };
 
-// 计算文件哈希值
-const calculateFileHash = (filePath) => {
-    const fileBuffer = fs.readFileSync(filePath);
-    const hashSum = crypto.createHash('sha256');
-    hashSum.update(fileBuffer);
-    return hashSum.digest('hex');
+/**
+ * 格式化文件大小
+ */
+const formatFileSize = (bytes) => {
+    if (bytes === 0) return '0 Bytes';
+    const k = 1024;
+    const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
 };
 
-// 检查文件类型是否安全
-const isFileTypeSafe = (filename) => {
-    // 危险文件扩展名黑名单
-    const dangerousExtensions = [
-        '.exe', '.bat', '.cmd', '.com', '.pif', '.scr', '.vbs', '.js', '.jar', '.app', '.deb', '.pkg', '.dmg',
-        '.msi', '.php', '.asp', '.aspx', '.jsp', '.py', '.rb', '.pl', '.sh', '.ps1', '.vb', '.wsf', '.reg'
-    ];
-    
-    // 安全文件扩展名白名单
-    const safeExtensions = [
-        '.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp', '.svg', // 图片
-        '.mp4', '.avi', '.mkv', '.mov', '.wmv', '.flv', '.webm', // 视频
-        '.mp3', '.wav', '.flac', '.aac', '.ogg', '.wma', // 音频
-        '.pdf', '.doc', '.docx', '.xls', '.xlsx', '.ppt', '.pptx', // 文档
-        '.txt', '.md', '.csv', '.json', '.xml', '.yaml', '.yml', // 文本
-        '.zip', '.rar', '.7z', '.tar', '.gz', '.bz2', // 压缩文件
-        '.iso', '.img' // 镜像文件
-    ];
-    
-    const fileExtension = path.extname(filename).toLowerCase();
-    
-    // 如果在黑名单中，直接拒绝
-    if (dangerousExtensions.includes(fileExtension)) {
-        return { safe: false, reason: '文件类型在危险文件黑名单中' };
+/**
+ * 生成唯一文件名
+ */
+const generateUniqueFilename = (originalName) => {
+    const ext = path.extname(originalName);
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+    const uuid = crypto.randomUUID().substring(0, 8);
+    return `${uuid}_${timestamp}${ext}`;
+};
+
+/**
+ * 解码文件名（处理Base64编码的UTF-8文件名）
+ */
+const decodeFilename = (filename) => {
+    if (filename.startsWith('UTF8:')) {
+        try {
+            const base64Part = filename.substring(5);
+            const bytes = Buffer.from(base64Part, 'base64');
+            return bytes.toString('utf8');
+        } catch (e) {
+            console.error('文件名解码失败:', e);
+            return filename;
+        }
     }
-    
-    // 如果在白名单中，允许
-    if (safeExtensions.includes(fileExtension)) {
-        return { safe: true };
+    return filename;
+};
+
+/**
+ * 编码文件名（将UTF-8文件名转换为Base64）
+ */
+const encodeFilename = (filename) => {
+    if (/[^\x00-\x7F]/.test(filename)) {
+        try {
+            const encoder = new TextEncoder();
+            const uint8Array = encoder.encode(filename);
+            const base64Name = Buffer.from(uint8Array).toString('base64');
+            return 'UTF8:' + base64Name;
+        } catch (e) {
+            console.error('文件名编码失败:', e);
+            return filename;
+        }
     }
-    
-    // 不在白名单中的文件，根据MIME类型进一步检查
-    return { safe: false, reason: '文件类型不在安全文件白名单中' };
+    return filename;
 };
 
 module.exports = {
-    readJSON,
-    writeJSON,
+    DATA_DIR,
+    FILES_ROOT,
     calculateFileHash,
     isFileTypeSafe,
-    DATA_DIR,
-    FILES_ROOT
+    readJSON,
+    writeJSON,
+    formatFileSize,
+    generateUniqueFilename,
+    decodeFilename,
+    encodeFilename
 };

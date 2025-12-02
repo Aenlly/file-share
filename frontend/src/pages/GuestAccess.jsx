@@ -136,7 +136,10 @@ const GuestAccess = () => {
 
   const handleDownloadFile = (file) => {
     // 使用显示名称进行下载，后端会处理文件名映射
-    window.open(`/api/share/${accessCode}/file/${file.name}`, '_blank')
+    const downloadUrl = currentFolderId 
+      ? `/api/share/${accessCode}/file/${file.name}?folderId=${currentFolderId}`
+      : `/api/share/${accessCode}/file/${file.name}`;
+    window.open(downloadUrl, '_blank')
   }
 
   // 如果还没有提交访问码，显示访问码输入界面

@@ -1,10 +1,26 @@
-# 文件分享系统
+# 文件分享系统 v2.0
 
-一个基于React和Node.js的现代化文件分享系统，支持用户管理、文件夹管理、文件上传下载和访客分享功能。
+一个现代化的文件分享系统，支持多种数据库类型的无缝切换。采用前后端分离架构，提供完整的文件管理、用户管理和分享功能。
 
-## 功能特点
+**[English](./README_EN.md) | 中文**
 
-### 前端功能
+## ✨ 核心特性
+
+### 🗄️ 多数据库支持
+- **JSON** - 本地文件存储（默认，无需配置）
+- **MongoDB** - NoSQL数据库
+- **MySQL** - 关系型数据库
+- **PostgreSQL** - 关系型数据库
+- **无缝切换** - 只需修改环境变量
+
+### 🔐 安全性
+- JWT认证和授权
+- 基于角色的访问控制（RBAC）
+- 速率限制防止暴力攻击
+- 文件类型和大小检查
+- 密码bcrypt加密
+
+### 📊 前端功能
 - 用户登录和认证
 - 用户管理（管理员权限）
   - 创建、编辑、删除用户
@@ -59,62 +75,69 @@
 - fs-extra（文件操作）
 - JSZip（文件压缩）
 
-## 安装和运行
+## 🚀 快速开始
 
-### 1. 安装依赖
+### 最小化安装（5分钟）
 
-#### 后端
 ```bash
-cd backend
-npm install
+# 1. 安装依赖
+cd backend && npm install
+cd ../frontend && npm install
+
+# 2. 启动后端（终端1）
+cd backend && npm start
+
+# 3. 启动前端（终端2）
+cd frontend && npm run dev
+
+# 4. 访问应用
+# 前端: http://localhost:3001
+# 后端: http://localhost:3000
+# 默认账号: admin / admin123
 ```
 
-#### 前端
-```bash
-cd frontend
-npm install
+### 完整安装指南
+
+详见 [INSTALLATION.md](./INSTALLATION.md)
+
+## 🗄️ 数据库配置
+
+### 使用JSON（默认）
+无需额外配置，数据存储在 `backend/data` 目录
+
+### 使用MongoDB
+```env
+DB_TYPE=mongodb
+MONGODB_URI=mongodb://localhost:27017/file-share
 ```
 
-### 2. 启动应用
-
-#### 启动后端服务
-```bash
-cd backend
-npm start
-```
-后端服务将在 http://localhost:3000 启动
-
-#### 启动前端应用
-```bash
-cd frontend
-npm run dev
-```
-前端应用将在 http://localhost:3001 启动
-
-### 3. 部署配置
-
-#### 配置基础URL
-在部署到服务器时，需要配置正确的基础URL：
-
-1. 编辑 `frontend/.env.production` 文件
-2. 设置 `VITE_BASE_URL` 为您的完整域名，例如：
-   ```
-   VITE_BASE_URL=https://yourdomain.com
-   ```
-
-#### 构建生产版本
-```bash
-cd frontend
-npm run build
+### 使用MySQL
+```env
+DB_TYPE=mysql
+MYSQL_HOST=localhost
+MYSQL_PORT=3306
+MYSQL_USER=root
+MYSQL_PASSWORD=your_password
+MYSQL_DATABASE=file_share
 ```
 
-构建后的文件将在 `frontend/dist` 目录中，可以部署到任何静态文件服务器。
+### 使用PostgreSQL
+```env
+DB_TYPE=postgresql
+PG_HOST=localhost
+PG_PORT=5432
+PG_USER=postgres
+PG_PASSWORD=your_password
+PG_DATABASE=file_share
+```
 
-### 3. 默认账号
+## 🔑 默认账号
 
 系统会自动创建一个默认管理员账号：
-- 用户名：admin
-- 密码：admin123
+- **用户名：** admin
+- **密码：** admin123
+
+⚠️ **首次启动后请立即修改密码！**
 
 ## 使用说明
 
@@ -250,7 +273,43 @@ file-share/
 - 分享管理：`frontend/src/pages/ShareManagement.jsx`
 - 用户管理：`frontend/src/pages/UserManagement.jsx`
 
-## 版本更新记录
+## 📚 文档
+
+| 文档 | 说明 |
+|------|------|
+| [QUICK_START.md](./backend/QUICK_START.md) | 5分钟快速开始 |
+| [INSTALLATION.md](./INSTALLATION.md) | 详细安装指南 |
+| [UPGRADE_GUIDE.md](./backend/UPGRADE_GUIDE.md) | v1.0升级到v2.0 |
+| [ARCHITECTURE.md](./ARCHITECTURE.md) | 系统架构详解 |
+| [DATABASE_ADAPTER_GUIDE.md](./backend/DATABASE_ADAPTER_GUIDE.md) | 数据库适配器开发 |
+| [PROJECT_SUMMARY.md](./PROJECT_SUMMARY.md) | 项目总结 |
+| [CHANGELOG.md](./CHANGELOG.md) | 版本更新日志 |
+
+## 📋 版本更新记录
+
+### v2.0.0 (2024-01-01)
+
+#### 🎉 新增功能
+- ✅ 数据库抽象层（支持JSON/MongoDB/MySQL/PostgreSQL）
+- ✅ 日志系统（Winston）
+- ✅ 速率限制（express-rate-limit）
+- ✅ 安全HTTP头（Helmet）
+- ✅ 统一错误处理
+- ✅ 环境变量配置
+
+#### 🔧 改进
+- ✅ 模块化代码结构
+- ✅ 改进的文件名编码处理
+- ✅ 改进的并发处理
+- ✅ 改进的错误消息
+
+#### 📚 文档
+- ✅ 升级指南
+- ✅ 数据库适配器开发指南
+- ✅ 快速开始指南
+- ✅ 架构文档
+
+详见 [CHANGELOG.md](./CHANGELOG.md)
 
 ### v1.2.0
 - 优化访问码系统

@@ -651,20 +651,75 @@ const FolderDetail = () => {
     }
   }
 
-  const handleDownloadFile = (file) => {
-    // 使用显示名称作为下载参数
-    const displayName = file.name;
-    
-    // 创建下载链接
-    const downloadUrl = `/api/folders/${id}/download/${displayName}`
-    
-    // 创建临时链接并触发下载
-    const link = document.createElement('a')
-    link.href = downloadUrl
-    link.download = displayName
-    document.body.appendChild(link)
-    link.click()
-    document.body.removeChild(link)
+  const handleDownloadFile = async (file) => {
+    try {
+      // 使用 savedName 作为下载参数（唯一标识），显示名称用于保存
+      const savedName = file.savedName;
+      const displayName = file.name || file.originalName;
+      
+      console.log('下载文件:', { savedName, displayName, file });
+      
+      // 使用 api 实例下载文件（会自动携带 token）
+      const response = await api.get(`/folders/${id}/download/${encodeURIComponent(savedName)}`, {
+        responseType: 'blob'
+      });
+      
+      console.log('下载响应:', response.data.type, response.data.size);
+      
+      const blob = response.data;
+      
+      // 方法1: 使用 File System Access API (现代浏览器)
+      if ('showSaveFilePicker' in window) {
+        try {
+          const handle = await window.showSaveFilePicker({
+            suggestedName: displayName,
+            types: [{
+              description: 'Files',
+              accept: { '*/*': [] }
+            }]
+          });
+          const writable = await handle.createWritable();
+          await writable.write(blob);
+          await writable.close();
+          message.success('下载成功');
+          return;
+        } catch (err) {
+          if (err.name === 'AbortError') {
+            message.info('已取消下载');
+            return;
+          }
+          console.log('File System Access API 失败，使用备用方案:', err);
+        }
+      }
+      
+      // 方法2: 使用 msSaveOrOpenBlob (IE/Edge)
+      if (window.navigator && window.navigator.msSaveOrOpenBlob) {
+        window.navigator.msSaveOrOpenBlob(blob, displayName);
+        message.success('下载成功');
+        return;
+      }
+      
+      // 方法3: 使用 Object URL (备用方案，但不创建 a 标签)
+      // 直接在新窗口打开，让浏览器处理下载
+      const url = window.URL.createObjectURL(blob);
+      const newWindow = window.open(url, '_blank');
+      
+      if (newWindow) {
+        // 窗口打开成功
+        setTimeout(() => {
+          window.URL.revokeObjectURL(url);
+        }, 1000);
+        message.success('已在新窗口打开文件');
+      } else {
+        // 窗口被阻止，提示用户
+        message.warning('请允许弹出窗口以下载文件');
+        window.URL.revokeObjectURL(url);
+      }
+      
+    } catch (error) {
+      console.error('下载失败:', error);
+      message.error('下载失败: ' + (error.response?.data?.error || error.message));
+    }
   }
 
   const confirmMoveFile = () => {
@@ -729,11 +784,28 @@ const FolderDetail = () => {
       const newFileList = fileList.filter(item => item.uid !== file.uid)
       setFileList(newFileList)
     },
-    beforeUpload: (file, fileList) => {
+    beforeUpload: (file, newFiles) => {
       // 支持多文件上传
-      // fileList 参数包含了所有选中的文件
-      setFileList(fileList)
-      return false // 阻止自动上传
+      // newFiles 参数包含了本次选中的所有文件
+      // 追加到现有文件列表，而不是替换
+      setFileList(prevList => {
+        // 检查是否有重复的文件（基于文件名和大小）
+        const existingFiles = prevList.filter(f => 
+          newFiles.some(nf => nf.name === f.name && nf.size === f.size)
+        );
+        
+        if (existingFiles.length > 0) {
+          // 如果有重复文件，只添加不重复的
+          const uniqueNewFiles = newFiles.filter(nf => 
+            !prevList.some(f => f.name === nf.name && f.size === nf.size)
+          );
+          return [...prevList, ...uniqueNewFiles];
+        }
+        
+        // 没有重复，直接追加所有新文件
+        return [...prevList, ...newFiles];
+      });
+      return false; // 阻止自动上传
     },
     fileList,
     multiple: true, // 启用多文件选择
@@ -741,8 +813,15 @@ const FolderDetail = () => {
 
   // 判断是否为图片文件
   const isImageFile = (filename) => {
+    if (!filename || typeof filename !== 'string') {
+      return false;
+    }
     const imageExtensions = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp'];
-    const ext = filename.substring(filename.lastIndexOf('.')).toLowerCase();
+    const lastDotIndex = filename.lastIndexOf('.');
+    if (lastDotIndex === -1) {
+      return false;
+    }
+    const ext = filename.substring(lastDotIndex).toLowerCase();
     return imageExtensions.includes(ext);
   };
 
@@ -753,11 +832,11 @@ const FolderDetail = () => {
       key: 'name',
       render: (text, record) => {
         // 使用显示名称作为预览和下载的参数
-        const displayName = record.name || text;
+        const displayName = record.name || text || '未知文件';
         
         return (
           <Space>
-            {isImageFile(displayName) ? (
+            {displayName && isImageFile(displayName) ? (
               <FileOutlined style={{ color: '#52c41a' }} />
             ) : (
               <FileOutlined style={{ color: '#1890ff' }} />
@@ -784,7 +863,7 @@ const FolderDetail = () => {
       key: 'actions',
       render: (_, record) => (
         <Space>
-          {isImageFile(record.name) && (
+          {record.name && isImageFile(record.name) && (
             <Button 
               size="small"
               icon={<EyeOutlined />}
@@ -1052,12 +1131,24 @@ const FolderDetail = () => {
           <Text>目标文件夹:</Text>
           <Input
             style={{ marginTop: 8 }}
+            type="number"
             placeholder="请输入目标文件夹ID"
             value={targetFolder}
             onChange={(e) => setTargetFolder(e.target.value)}
           />
           <div style={{ marginTop: 8, fontSize: '12px', color: '#666' }}>
-            可用文件夹: {allFolders.filter(f => f.id !== parseInt(id)).map(f => `${f.alias}(${f.id})`).join(', ')}
+            <div>可用文件夹:</div>
+            {allFolders.filter(f => f.id !== parseInt(id)).length > 0 ? (
+              <div>
+                {allFolders.filter(f => f.id !== parseInt(id)).map(f => (
+                  <div key={f.id} style={{ cursor: 'pointer', padding: '4px 0' }} onClick={() => setTargetFolder(String(f.id))}>
+                    {f.alias} (ID: {f.id})
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div>没有其他文件夹可用</div>
+            )}
           </div>
         </div>
       </Modal>
@@ -1167,14 +1258,58 @@ const FolderDetail = () => {
           }
         }}
         footer={[
-          <Button key="download" type="primary" icon={<DownloadOutlined />} onClick={() => {
-            // 下载原图
-            const link = document.createElement('a')
-            link.href = previewImage.src.replace(/width=\d+&height=\d+/, 'width=1920&height=1080')
-            link.download = previewImage.name
-            document.body.appendChild(link)
-            link.click()
-            document.body.removeChild(link)
+          <Button key="download" type="primary" icon={<DownloadOutlined />} onClick={async () => {
+            try {
+              // 下载原图（使用更大的尺寸）
+              const downloadUrl = previewImage.src.replace(/width=\d+&height=\d+/, 'width=1920&height=1080');
+              
+              // 使用 api 实例下载（会自动携带 token）
+              const response = await api.get(downloadUrl.replace('/api', ''), {
+                responseType: 'blob'
+              });
+              
+              const blob = response.data;
+              const displayName = previewImage.name;
+              
+              // 使用 File System Access API
+              if ('showSaveFilePicker' in window) {
+                try {
+                  const handle = await window.showSaveFilePicker({
+                    suggestedName: displayName,
+                    types: [{
+                      description: 'Images',
+                      accept: { 'image/*': [] }
+                    }]
+                  });
+                  const writable = await handle.createWritable();
+                  await writable.write(blob);
+                  await writable.close();
+                  message.success('下载成功');
+                  return;
+                } catch (err) {
+                  if (err.name === 'AbortError') {
+                    message.info('已取消下载');
+                    return;
+                  }
+                }
+              }
+              
+              // 备用方案：在新窗口打开
+              const url = window.URL.createObjectURL(blob);
+              const newWindow = window.open(url, '_blank');
+              
+              if (newWindow) {
+                setTimeout(() => window.URL.revokeObjectURL(url), 1000);
+                message.success('已在新窗口打开图片');
+              } else {
+                message.warning('请允许弹出窗口以下载文件');
+                window.URL.revokeObjectURL(url);
+              }
+              
+            } catch (error) {
+              console.error('下载失败:', error);
+              message.error('下载失败');
+            }
           }}>
             下载原图
           </Button>,

@@ -242,11 +242,11 @@ const ShareManagement = () => {
     },
     {
       title: '创建时间',
-      dataIndex: 'id',
+      dataIndex: 'createdAt',
       key: 'createdAt',
-      render: (id) => (
-        <Tooltip title={dayjs(id).format('YYYY-MM-DD HH:mm:ss')}>
-          <Text>{dayjs(id).fromNow()}</Text>
+      render: (createdAt) => (
+        <Tooltip title={dayjs(createdAt).format('YYYY-MM-DD HH:mm:ss')}>
+          <Text>{dayjs(createdAt).fromNow()}</Text>
         </Tooltip>
       )
     },
