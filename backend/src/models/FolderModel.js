@@ -15,55 +15,78 @@ class FolderModel extends BaseModel {
      * 根据所有者查询
      */
     async findByOwner(owner) {
-        return await this.find({ owner });
+        try {
+            return await this.find({ owner });
+        } catch (error) {
+            console.error(`FolderModel.findByOwner失败: owner=${owner}`, error);
+            // 如果是系统繁忙错误，直接抛出
+            if (error.message.includes('繁忙') || error.message.includes('重试')) {
+                throw error;
+            }
+            throw new Error(`获取文件夹列表失败，请刷新页面重试`);
+        }
     }
 
     /**
      * 根据父文件夹ID查询
      */
     async findByParentId(parentId, owner = null) {
-        const query = { parentId };
-        if (owner !== null) {
-            query.owner = owner;
+        try {
+            const query = { parentId };
+            if (owner !== null) {
+                query.owner = owner;
+            }
+            return await this.find(query);
+        } catch (error) {
+            console.error(`FolderModel.findByParentId失败: parentId=${parentId}, owner=${owner}`, error);
+            throw new Error(`查询子文件夹失败: ${error.message}`);
         }
-        return await this.find(query);
     }
 
     /**
      * 创建文件夹
      */
     async create(folderData) {
-        // 获取所有文件夹以确定物理路径
-        const allFolders = await this.getAll();
+        try {
+            // 获取所有文件夹以确定物理路径
+            const allFolders = await this.getAll();
 
-        let parentPhysicalPath = '';
-        if (folderData.parentId) {
-            const parentFolder = allFolders.find(
-                f => f.id === folderData.parentId && f.owner === folderData.owner
-            );
-            if (!parentFolder) {
-                throw new Error('父文件夹不存在或无权访问');
+            let parentPhysicalPath = '';
+            if (folderData.parentId) {
+                const parentFolder = allFolders.find(
+                    f => f.id === folderData.parentId && f.owner === folderData.owner
+                );
+                if (!parentFolder) {
+                    throw new Error('父文件夹不存在或无权访问');
+                }
+                parentPhysicalPath = parentFolder.physicalPath + '/';
+            } else {
+                parentPhysicalPath = folderData.owner + '/';
             }
-            parentPhysicalPath = parentFolder.physicalPath + '/';
-        } else {
-            parentPhysicalPath = folderData.owner + '/';
+
+            const physicalPath = `${parentPhysicalPath}${Date.now()}`;
+            const fullPath = path.join(FILES_ROOT, physicalPath);
+
+            // 创建物理文件夹
+            await fs.ensureDir(fullPath);
+
+            // 创建数据库记录
+            const newFolder = await this.insert({
+                alias: folderData.alias,
+                physicalPath,
+                owner: folderData.owner,
+                parentId: folderData.parentId || null
+            });
+
+            return newFolder;
+        } catch (error) {
+            console.error(`FolderModel.create失败: alias=${folderData.alias}`, error);
+            // 如果是系统繁忙错误，直接抛出
+            if (error.message.includes('繁忙') || error.message.includes('重试')) {
+                throw error;
+            }
+            throw new Error(`创建文件夹失败，请重试`);
         }
-
-        const physicalPath = `${parentPhysicalPath}${Date.now()}`;
-        const fullPath = path.join(FILES_ROOT, physicalPath);
-
-        // 创建物理文件夹
-        await fs.ensureDir(fullPath);
-
-        // 创建数据库记录
-        const newFolder = await this.insert({
-            alias: folderData.alias,
-            physicalPath,
-            owner: folderData.owner,
-            parentId: folderData.parentId || null
-        });
-
-        return newFolder;
     }
 
     /**

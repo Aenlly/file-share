@@ -70,9 +70,12 @@ async function isFolderOwnedByUser(folderId, username) {
  */
 router.get('/', authenticate, async (req, res, next) => {
     try {
+        logger.info(`获取文件夹列表: user=${req.user.username}`);
         const folders = await FolderModel.findByOwner(req.user.username);
+        logger.info(`成功获取文件夹列表: user=${req.user.username}, count=${folders.length}`);
         res.json(folders);
     } catch (error) {
+        logger.error(`获取文件夹列表失败: user=${req.user.username}`, error);
         next(error);
     }
 });
@@ -286,24 +289,185 @@ router.post('/', authenticate, async (req, res, next) => {
 });
 
 /**
+ * ==================== 回收站路由（必须在 /:folderId 之前） ====================
+ */
+
+/**
+ * 获取回收站文件列表
+ */
+router.get('/trash/files', authenticate, async (req, res, next) => {
+    try {
+        const RecycleBinModel = require('../models/RecycleBinModel');
+        const username = req.user.username;
+        
+        const deletedFiles = await RecycleBinModel.findByOwner(username);
+        
+        logger.info(`获取回收站文件: 用户=${username}, 数量=${deletedFiles.length}`);
+        
+        res.json(deletedFiles);
+    } catch (error) {
+        next(error);
+    }
+});
+
+/**
+ * 恢复回收站文件
+ */
+router.post('/trash/restore/:fileId', authenticate, async (req, res, next) => {
+    try {
+        const RecycleBinModel = require('../models/RecycleBinModel');
+        const recycleBinId = parseInt(req.params.fileId);
+        const username = req.user.username;
+        
+        const recycleBinFile = await RecycleBinModel.findById(recycleBinId);
+        
+        if (!recycleBinFile) {
+            return res.status(404).json({ error: '文件不存在' });
+        }
+        
+        if (recycleBinFile.owner !== username) {
+            return res.status(403).json({ error: '无权操作' });
+        }
+        
+        const restoredFile = await RecycleBinModel.restore(recycleBinId);
+        const newFile = await FileModel.create(restoredFile);
+        
+        logger.info(`恢复文件: ${restoredFile.originalName} (用户: ${username})`);
+        
+        res.json({ 
+            success: true, 
+            message: '文件已恢复',
+            file: {
+                id: newFile.id,
+                originalName: newFile.originalName
+            }
+        });
+    } catch (error) {
+        next(error);
+    }
+});
+
+/**
+ * 清空回收站（必须在 /trash/:fileId 之前定义）
+ */
+router.delete('/trash/clear', authenticate, async (req, res, next) => {
+    try {
+        const RecycleBinModel = require('../models/RecycleBinModel');
+        const username = req.user.username;
+        
+        logger.info(`清空回收站请求: 用户=${username}`);
+        
+        const recycleBinFiles = await RecycleBinModel.findByOwner(username);
+        
+        let deletedCount = 0;
+        let errorCount = 0;
+        
+        for (const file of recycleBinFiles) {
+            try {
+                const folder = await FolderModel.findById(file.folderId);
+                if (folder) {
+                    const filePath = path.join(FILES_ROOT, folder.physicalPath, file.savedName);
+                    if (await fs.pathExists(filePath)) {
+                        await fs.remove(filePath);
+                    }
+                }
+                
+                await RecycleBinModel.permanentDelete(file.id, username);
+                deletedCount++;
+            } catch (error) {
+                logger.error(`删除文件失败: ${file.originalName}`, error);
+                errorCount++;
+            }
+        }
+        
+        logger.info(`清空回收站完成: 用户=${username}, 成功=${deletedCount}, 失败=${errorCount}`);
+        
+        res.json({ 
+            success: true, 
+            message: `已清空回收站，删除 ${deletedCount} 个文件`,
+            deletedCount,
+            errorCount
+        });
+    } catch (error) {
+        logger.error(`清空回收站失败: 用户=${req.user.username}`, error);
+        next(error);
+    }
+});
+
+/**
+ * 从回收站永久删除文件
+ */
+router.delete('/trash/:fileId', authenticate, async (req, res, next) => {
+    try {
+        const RecycleBinModel = require('../models/RecycleBinModel');
+        const recycleBinId = parseInt(req.params.fileId);
+        const username = req.user.username;
+        
+        logger.info(`永久删除文件请求: fileId=${recycleBinId}, 用户=${username}`);
+        
+        const recycleBinFile = await RecycleBinModel.findById(recycleBinId);
+        
+        if (!recycleBinFile) {
+            logger.warn(`回收站文件不存在: fileId=${recycleBinId}`);
+            return res.status(404).json({ error: '文件不存在' });
+        }
+        
+        if (recycleBinFile.owner !== username) {
+            logger.warn(`用户无权删除文件: user=${username}, fileId=${recycleBinId}`);
+            return res.status(403).json({ error: '无权操作' });
+        }
+        
+        const folder = await FolderModel.findById(recycleBinFile.folderId);
+        if (folder) {
+            const filePath = path.join(FILES_ROOT, folder.physicalPath, recycleBinFile.savedName);
+            if (await fs.pathExists(filePath)) {
+                await fs.remove(filePath);
+            }
+        }
+        
+        await RecycleBinModel.permanentDelete(recycleBinId, username);
+        
+        logger.info(`永久删除文件成功: ${recycleBinFile.originalName} (用户: ${username})`);
+        
+        res.json({ 
+            success: true, 
+            message: '文件已永久删除'
+        });
+    } catch (error) {
+        logger.error(`永久删除文件失败: fileId=${req.params.fileId}`, error);
+        next(error);
+    }
+});
+
+/**
+ * ==================== 文件夹路由 ====================
+ */
+
+/**
  * 获取文件夹详情
  */
 router.get('/:folderId', authenticate, async (req, res, next) => {
     try {
         const folderId = parseInt(req.params.folderId);
+        logger.info(`获取文件夹详情: folderId=${folderId}, user=${req.user.username}`);
+        
         const folder = await FolderModel.findById(folderId);
 
         if (!folder) {
+            logger.warn(`文件夹不存在: folderId=${folderId}`);
             return res.status(404).json({ error: '文件夹不存在' });
         }
 
         const hasAccess = await isFolderOwnedByUser(folderId, req.user.username);
         if (!hasAccess) {
+            logger.warn(`用户无权访问文件夹: user=${req.user.username}, folderId=${folderId}`);
             return res.status(403).json({ error: '无权访问' });
         }
 
+        logger.info(`成功获取文件夹详情: folderId=${folderId}`);
         res.json(folder);
     } catch (error) {
+        logger.error(`获取文件夹详情失败: folderId=${req.params.folderId}`, error);
         next(error);
     }
 });
@@ -336,20 +500,27 @@ router.delete('/:folderId', authenticate, async (req, res, next) => {
 router.get('/:folderId/files', authenticate, async (req, res, next) => {
     try {
         const folderId = parseInt(req.params.folderId);
+        
+        logger.info(`获取文件列表: folderId=${folderId}, user=${req.user.username}`);
+        
         const folder = await FolderModel.findById(folderId);
 
         if (!folder) {
+            logger.warn(`文件夹不存在: folderId=${folderId}`);
             return res.status(404).json({ error: '文件夹不存在' });
         }
 
         const hasAccess = await isFolderOwnedByUser(folderId, req.user.username);
         if (!hasAccess) {
+            logger.warn(`用户无权访问: user=${req.user.username}, folderId=${folderId}`);
             return res.status(403).json({ error: '无权访问' });
         }
 
         const files = await FileModel.findByFolder(folderId);
+        logger.info(`成功获取文件列表: folderId=${folderId}, count=${files.length}`);
         res.json(files);
     } catch (error) {
+        logger.error(`获取文件列表失败: folderId=${req.params.folderId}`, error);
         next(error);
     }
 });
@@ -678,7 +849,7 @@ router.post('/:folderId/upload', authenticate, uploadLimiter, upload.array('file
 });
 
 /**
- * 删除文件
+ * 删除文件（移至回收站）
  */
 router.delete('/:folderId/file', authenticate, async (req, res, next) => {
     try {
@@ -704,30 +875,70 @@ router.delete('/:folderId/file', authenticate, async (req, res, next) => {
         }
 
         const filesToDelete = filenames || [filename];
-        const dirPath = path.join(FILES_ROOT, folder.physicalPath);
 
-        const result = await FileModel.batchDelete(filesToDelete, folderId, req.user.username);
+        // 移至回收站（不删除物理文件）
+        const result = await FileModel.batchMoveToRecycleBin(
+            filesToDelete, 
+            folderId, 
+            req.user.username
+        );
 
-        // 删除物理文件
-        for (const file of result.deletedFiles) {
-            const filePath = path.join(dirPath, file.savedName);
-            if (await fs.pathExists(filePath)) {
-                await fs.remove(filePath);
-            }
-        }
-
-        logger.info(`删除文件: ${result.deletedFiles.map(f => f.originalName).join(', ')} (文件夹: ${folder.alias})`);
+        logger.info(`移至回收站: ${result.deletedFiles.map(f => f.originalName).join(', ')} (文件夹: ${folder.alias})`);
 
         res.json({
             success: result.deletedFiles.length > 0,
             deletedFiles: result.deletedFiles,
             errorFiles: result.errorFiles,
-            total: filesToDelete.length
+            total: filesToDelete.length,
+            deleteType: 'logical'
         });
     } catch (error) {
         next(error);
     }
 });
+
+/**
+ * 自动清理过期文件（超过30天）
+ */
+async function cleanExpiredTrashFiles() {
+    try {
+        const RecycleBinModel = require('../models/RecycleBinModel');
+        const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+        
+        // 获取所有超过30天的回收站文件
+        const expiredFiles = await RecycleBinModel.findExpired(thirtyDaysAgo.toISOString());
+        
+        let deletedCount = 0;
+        
+        for (const file of expiredFiles) {
+            try {
+                // 删除物理文件
+                const folder = await FolderModel.findById(file.folderId);
+                if (folder) {
+                    const filePath = path.join(FILES_ROOT, folder.physicalPath, file.savedName);
+                    if (await fs.pathExists(filePath)) {
+                        await fs.remove(filePath);
+                    }
+                }
+                
+                // 从回收站永久删除
+                await RecycleBinModel.permanentDelete(file.id, file.owner);
+                deletedCount++;
+            } catch (error) {
+                logger.error(`自动清理文件失败: ${file.originalName}`, error);
+            }
+        }
+        
+        if (deletedCount > 0) {
+            logger.info(`自动清理过期文件: 删除 ${deletedCount} 个文件`);
+        }
+    } catch (error) {
+        logger.error('自动清理过期文件失败:', error);
+    }
+}
+
+// 导出清理函数，由app.js在初始化后调用
+module.exports.cleanExpiredTrashFiles = cleanExpiredTrashFiles;
 
 /**
  * 下载文件
@@ -1001,20 +1212,26 @@ router.post('/:folderId/move', authenticate, async (req, res, next) => {
 router.get('/:folderId/subfolders', authenticate, async (req, res, next) => {
     try {
         const folderId = parseInt(req.params.folderId);
+        logger.info(`获取子文件夹: folderId=${folderId}, user=${req.user.username}`);
+        
         const folder = await FolderModel.findById(folderId);
 
         if (!folder) {
+            logger.warn(`文件夹不存在: folderId=${folderId}`);
             return res.status(404).json({ error: '文件夹不存在' });
         }
 
         const hasAccess = await isFolderOwnedByUser(folderId, req.user.username);
         if (!hasAccess) {
+            logger.warn(`用户无权访问: user=${req.user.username}, folderId=${folderId}`);
             return res.status(403).json({ error: '无权访问' });
         }
 
         const subFolders = await FolderModel.findByParentId(folderId, req.user.username);
+        logger.info(`成功获取子文件夹: folderId=${folderId}, count=${subFolders.length}`);
         res.json(subFolders);
     } catch (error) {
+        logger.error(`获取子文件夹失败: folderId=${req.params.folderId}`, error);
         next(error);
     }
 });

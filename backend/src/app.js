@@ -6,7 +6,7 @@ const helmet = require('helmet');
 const path = require('path');
 const fs = require('fs-extra');
 
-const config = require('./config');
+const config = require('./config/index');
 const { getDatabaseManager } = require('./database/DatabaseManager');
 const logger = require('./utils/logger');
 const errorHandler = require('./middleware/errorHandler');
@@ -139,6 +139,29 @@ async function initializeApp() {
             logger.info(`✅ 服务器运行在端口 ${PORT}`);
             logger.info(`📊 数据库类型: ${config.database.type}`);
             logger.info(`🔐 环境: ${config.nodeEnv}`);
+        });
+
+        // 启动回收站自动清理任务（数据库初始化后）
+        const { cleanExpiredTrashFiles } = require('./routes/folderRoutes');
+        if (cleanExpiredTrashFiles) {
+            // 每天执行一次自动清理
+            setInterval(cleanExpiredTrashFiles, 24 * 60 * 60 * 1000);
+            // 启动时执行一次
+            cleanExpiredTrashFiles().catch(err => {
+                logger.error('首次清理回收站失败:', err);
+            });
+            logger.info('🗑️  回收站自动清理任务已启动（每24小时执行一次）');
+        }
+
+        // 全局未捕获异常处理
+        process.on('uncaughtException', (error) => {
+            logger.error('未捕获的异常:', error);
+            logger.error('堆栈:', error.stack);
+        });
+
+        process.on('unhandledRejection', (reason, promise) => {
+            logger.error('未处理的Promise拒绝:', reason);
+            logger.error('Promise:', promise);
         });
 
         // 优雅关闭
