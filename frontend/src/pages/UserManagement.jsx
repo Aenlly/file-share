@@ -98,7 +98,7 @@ const UserManagement = () => {
   // 修改密码
   const changePasswordMutation = useMutation(
     async ({ id, password }) => {
-      const response = await api.put(`/users/${id}/password`, { password })
+      const response = await api.post(`/users/${id}/change-password`, { newPassword: password })
       return response.data
     },
     {

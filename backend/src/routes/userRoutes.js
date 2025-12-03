@@ -138,7 +138,7 @@ router.post('/:id/change-password', authenticate, async (req, res, next) => {
         }
 
         // 非管理员需要验证旧密码
-        if (req.user.role !== 'admin') {
+        if (req.user.role !== 'admin' && oldPassword) {
             const user = await UserModel.findById(userId);
             const verified = await UserModel.verifyPassword(user.username, oldPassword);
             if (!verified) {

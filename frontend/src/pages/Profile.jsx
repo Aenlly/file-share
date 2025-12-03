@@ -26,7 +26,7 @@ const Profile = () => {
   
   const changePasswordMutation = useMutation(
     async ({ password }) => {
-      const response = await api.put(`/users/${user.id}/password`, { password })
+      const response = await api.post(`/users/${user.id}/change-password`, { newPassword: password })
       return response.data
     },
     {
