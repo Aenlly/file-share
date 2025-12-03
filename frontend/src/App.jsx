@@ -7,6 +7,7 @@ import FolderDetail from './pages/FolderDetail'
 import UserManagement from './pages/UserManagement'
 import ShareManagement from './pages/ShareManagement'
 import Profile from './pages/Profile'
+import RecycleBin from './pages/RecycleBin'
 import GuestAccess from './pages/GuestAccess'
 import Layout from './components/Layout'
 
@@ -28,6 +29,7 @@ function App() {
           <Route index element={<Navigate to="/dashboard" />} />
           <Route path="dashboard" element={<Dashboard />} />
           <Route path="folder/:id" element={<FolderDetail />} />
+          <Route path="recycle-bin" element={<RecycleBin />} />
           <Route path="users" element={<UserManagement />} />
           <Route path="shares" element={<ShareManagement />} />
           <Route path="profile" element={<Profile />} />

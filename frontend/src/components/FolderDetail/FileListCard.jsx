@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Card, Button, Table, Space, Popconfirm, Modal, message } from 'antd'
+import { Card, Button, Table, Space, Modal, message } from 'antd'
 import { DeleteOutlined, EyeOutlined, DownloadOutlined, FileOutlined } from '@ant-design/icons'
 import { useMutation } from 'react-query'
 import dayjs from 'dayjs'
@@ -9,22 +9,23 @@ const FileListCard = ({ folderId, files, isLoading, onRefresh, isMobile = false,
   const [selectedRowKeys, setSelectedRowKeys] = useState([])
 
   const deleteFileMutation = useMutation(
-    async (files) => {
+    async ({ files, physicalDelete }) => {
       const fileArray = Array.isArray(files) ? files : [files]
       const filenames = fileArray.map(f => f.savedName)
       
       const response = await api.delete(`/folders/${folderId}/file`, { 
-        data: { filenames } 
+        data: { filenames, physicalDelete } 
       })
       
       return response.data
     },
     {
       onSuccess: (data) => {
-        const { deletedFiles, errorFiles } = data
+        const { deletedFiles, errorFiles, deleteType } = data
+        const deleteTypeText = deleteType === 'physical' ? '物理删除' : '逻辑删除'
         
         if (deletedFiles.length > 0) {
-          message.success(`成功删除 ${deletedFiles.length} 个文件`)
+          message.success(`成功${deleteTypeText} ${deletedFiles.length} 个文件`)
         }
         
         if (errorFiles.length > 0) {
@@ -47,15 +48,22 @@ const FileListCard = ({ folderId, files, isLoading, onRefresh, isMobile = false,
     }
     
     Modal.confirm({
-      title: '批量删除确认',
-      content: `确定要删除选中的 ${selectedRowKeys.length} 个文件吗？`,
-      okText: '确定',
+      title: '删除确认',
+      content: (
+        <div>
+          <p>确定要删除选中的 {selectedRowKeys.length} 个文件吗？</p>
+          <p style={{ color: '#666', fontSize: 12, marginTop: 8 }}>
+            文件将移至回收站，可在30天内恢复
+          </p>
+        </div>
+      ),
+      okText: '删除',
       cancelText: '取消',
       onOk: () => {
         const selectedFiles = files.filter(file => 
           selectedRowKeys.includes(file.id)
         )
-        deleteFileMutation.mutate(selectedFiles)
+        deleteFileMutation.mutate({ files: selectedFiles, physicalDelete: false })
       }
     })
   }
@@ -146,21 +154,32 @@ const FileListCard = ({ folderId, files, isLoading, onRefresh, isMobile = false,
               >
                 移动
               </Button>
-              <Popconfirm
-                title="确定要删除这个文件吗?"
-                onConfirm={() => deleteFileMutation.mutate(record)}
-                okText="确定"
-                cancelText="取消"
+              <Button 
+                danger 
+                size="small"
+                icon={<DeleteOutlined />}
+                block
+                onClick={() => {
+                  Modal.confirm({
+                    title: '删除确认',
+                    content: (
+                      <div>
+                        <p>确定要删除文件 "{record.name}" 吗？</p>
+                        <p style={{ color: '#666', fontSize: 12, marginTop: 8 }}>
+                          文件将移至回收站，可在30天内恢复
+                        </p>
+                      </div>
+                    ),
+                    okText: '删除',
+                    cancelText: '取消',
+                    onOk: () => {
+                      deleteFileMutation.mutate({ files: record, physicalDelete: false })
+                    }
+                  })
+                }}
               >
-                <Button 
-                  danger 
-                  size="small"
-                  icon={<DeleteOutlined />}
-                  block
-                >
-                  删除
-                </Button>
-              </Popconfirm>
+                删除
+              </Button>
             </Space>
           )
         }
@@ -189,20 +208,31 @@ const FileListCard = ({ folderId, files, isLoading, onRefresh, isMobile = false,
             >
               移动
             </Button>
-            <Popconfirm
-              title="确定要删除这个文件吗?"
-              onConfirm={() => deleteFileMutation.mutate(record)}
-              okText="确定"
-              cancelText="取消"
+            <Button 
+              danger 
+              size="small"
+              icon={<DeleteOutlined />}
+              onClick={() => {
+                Modal.confirm({
+                  title: '删除确认',
+                  content: (
+                    <div>
+                      <p>确定要删除文件 "{record.name}" 吗？</p>
+                      <p style={{ color: '#666', fontSize: 12, marginTop: 8 }}>
+                        文件将移至回收站，可在30天内恢复
+                      </p>
+                    </div>
+                  ),
+                  okText: '删除',
+                  cancelText: '取消',
+                  onOk: () => {
+                    deleteFileMutation.mutate({ files: record, physicalDelete: false })
+                  }
+                })
+              }}
             >
-              <Button 
-                danger 
-                size="small"
-                icon={<DeleteOutlined />}
-              >
-                删除
-              </Button>
-            </Popconfirm>
+              删除
+            </Button>
           </Space>
         )
       }

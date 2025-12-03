@@ -9,6 +9,12 @@ const PostgresqlAdapter = require('./adapters/PostgresqlAdapter');
  */
 class DatabaseManager {
     constructor(config) {
+        if (!config) {
+            throw new Error('DatabaseManager: config is required');
+        }
+        if (!config.database) {
+            throw new Error('DatabaseManager: config.database is required');
+        }
         this.config = config;
         this.adapter = null;
     }
@@ -71,8 +77,10 @@ let instance = null;
  * 获取或创建数据库管理器实例
  */
 function getDatabaseManager(config) {
-    if (!instance) {
+    if (!instance && config) {
         instance = new DatabaseManager(config);
+    } else if (!instance) {
+        throw new Error('DatabaseManager: config is required for first initialization');
     }
     return instance;
 }

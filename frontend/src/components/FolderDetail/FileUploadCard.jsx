@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Card, Button, Upload, Switch, Progress, message } from 'antd'
+import { Card, Button, Upload, Switch, Progress, message, Modal } from 'antd'
 import { UploadOutlined, InboxOutlined } from '@ant-design/icons'
 import api from '../../utils/api'
 
@@ -94,6 +94,22 @@ const FileUploadCard = ({ folderId, onUploadSuccess, isMobile = false }) => {
   const handleUpload = async () => {
     if (fileList.length === 0) {
       message.warning('请选择要上传的文件')
+      return
+    }
+
+    // 检查是否有大文件（>200MB）
+    const largeFiles = fileList.filter(file => file.size > 10 * 1024 * 1024)
+    if (largeFiles.length > 0 && !useChunkUpload) {
+      Modal.confirm({
+        title: '检测到大文件',
+        content: `有 ${largeFiles.length} 个文件超过10MB，建议使用分片上传。是否启用分片上传？`,
+        okText: '启用分片上传',
+        cancelText: '继续普通上传',
+        onOk: () => {
+          setUseChunkUpload(true)
+          message.info('已启用分片上传，请重新点击上传按钮')
+        }
+      })
       return
     }
 

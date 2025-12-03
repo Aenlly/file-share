@@ -8,7 +8,8 @@ import {
   MenuFoldOutlined,
   MenuUnfoldOutlined,
   MenuOutlined,
-  ShareAltOutlined
+  ShareAltOutlined,
+  DeleteOutlined
 } from '@ant-design/icons'
 import { useState, useEffect } from 'react'
 import { useAuthStore } from '../stores/authStore'
@@ -48,6 +49,11 @@ const Layout = () => {
       key: '/folders',
       icon: <FolderOutlined />,
       label: '文件夹管理',
+    },
+    {
+      key: '/recycle-bin',
+      icon: <DeleteOutlined />,
+      label: '回收站',
     },
     {
       key: '/shares',
