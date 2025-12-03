@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Card, Form, Input, Button, message, Avatar, Space, Typography } from 'antd'
 import { UserOutlined } from '@ant-design/icons'
 import { useMutation } from 'react-query'
@@ -9,7 +9,20 @@ const { Title, Text } = Typography
 
 const Profile = () => {
   const [form] = Form.useForm()
+  const [isMobile, setIsMobile] = useState(false)
   const { user } = useAuthStore()
+
+  // 检测是否为移动设备
+  useEffect(() => {
+    const checkMobile = () => {
+      setIsMobile(window.innerWidth < 768)
+    }
+    
+    checkMobile()
+    window.addEventListener('resize', checkMobile)
+    
+    return () => window.removeEventListener('resize', checkMobile)
+  }, [])
   
   const changePasswordMutation = useMutation(
     async ({ password }) => {
@@ -32,7 +45,7 @@ const Profile = () => {
   }
 
   return (
-    <div style={{ maxWidth: 600, margin: '0 auto' }}>
+    <div style={{ maxWidth: 600, margin: '0 auto', padding: isMobile ? '0 8px' : 0 }}>
       <Card>
         <Space direction="vertical" size="large" style={{ width: '100%' }}>
           <div style={{ textAlign: 'center' }}>

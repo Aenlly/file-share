@@ -45,6 +45,19 @@ const ShareManagement = () => {
   const [selectedRowKeys, setSelectedRowKeys] = useState([])
   const [batchExtendModalVisible, setBatchExtendModalVisible] = useState(false)
   const [batchExtendDays, setBatchExtendDays] = useState(7)
+  const [isMobile, setIsMobile] = useState(false)
+
+  // 检测是否为移动设备
+  useEffect(() => {
+    const checkMobile = () => {
+      setIsMobile(window.innerWidth < 768)
+    }
+    
+    checkMobile()
+    window.addEventListener('resize', checkMobile)
+    
+    return () => window.removeEventListener('resize', checkMobile)
+  }, [])
 
   // 加载分享列表
   const fetchShares = async () => {
@@ -211,36 +224,41 @@ const ShareManagement = () => {
       title: '文件夹',
       dataIndex: 'folderAlias',
       key: 'folderAlias',
+      ellipsis: true,
       render: (text) => <Text strong>{text}</Text>
     },
-    {
+    ...(!isMobile ? [{
       title: '访问链接',
       key: 'shareUrl',
+      ellipsis: true,
       render: (record) => (
         <Text code copyable={{ text: `${window.location.origin}/guest?code=${record.code}` }}>
-          {window.location.origin}/guest?code={record.code}
+          {isMobile ? '点击复制' : `${window.location.origin}/guest?code=${record.code}`}
         </Text>
       )
-    },
+    }] : []),
     {
       title: '访问码',
       dataIndex: 'code',
       key: 'code',
+      width: isMobile ? 100 : 150,
       render: (code) => (
-        <Space>
-          <Text code>{code}</Text>
-          <Tooltip title="复制分享链接">
-            <Button 
-              type="text" 
-              size="small" 
-              icon={<CopyOutlined />} 
-              onClick={() => copyShareLink({ code })}
-            />
-          </Tooltip>
+        <Space size="small">
+          <Text code style={{ fontSize: isMobile ? 10 : 12 }}>{code}</Text>
+          {!isMobile && (
+            <Tooltip title="复制分享链接">
+              <Button 
+                type="text" 
+                size="small" 
+                icon={<CopyOutlined />} 
+                onClick={() => copyShareLink({ code })}
+              />
+            </Tooltip>
+          )}
         </Space>
       )
     },
-    {
+    ...(!isMobile ? [{
       title: '创建时间',
       dataIndex: 'createdAt',
       key: 'createdAt',
@@ -249,27 +267,73 @@ const ShareManagement = () => {
           <Text>{dayjs(createdAt).fromNow()}</Text>
         </Tooltip>
       )
-    },
+    }] : []),
     {
       title: '过期时间',
       dataIndex: 'expireTime',
       key: 'expireTime',
+      width: isMobile ? 80 : 120,
       render: (time) => (
         <Tooltip title={dayjs(time).format('YYYY-MM-DD HH:mm:ss')}>
-          <Text>{dayjs(time).fromNow()}</Text>
+          <Text style={{ fontSize: isMobile ? 11 : 14 }}>{dayjs(time).fromNow()}</Text>
         </Tooltip>
       )
     },
     {
       title: '状态',
       key: 'status',
+      width: isMobile ? 60 : 80,
       render: (_, record) => getStatusTag(record.expireTime)
     },
     {
       title: '操作',
       key: 'actions',
+      fixed: isMobile ? 'right' : false,
+      width: isMobile ? 100 : 200,
       render: (_, record) => {
         const isExpired = record.isExpired || dayjs(record.expireTime).isBefore(dayjs())
+        
+        if (isMobile) {
+          return (
+            <Space direction="vertical" size="small">
+              <Button 
+                type="link" 
+                size="small" 
+                icon={<CopyOutlined />}
+                onClick={() => copyShareLink(record)}
+                block
+              >
+                复制
+              </Button>
+              <Button 
+                type="link" 
+                size="small" 
+                icon={<EditOutlined />}
+                onClick={() => openEditModal(record)}
+                block
+              >
+                编辑
+              </Button>
+              <Popconfirm
+                title="确定要禁用此分享链接吗？"
+                description="禁用后，访问码将立即失效"
+                onConfirm={() => disableShare(record.id)}
+                okText="确定"
+                cancelText="取消"
+              >
+                <Button 
+                  type="link" 
+                  size="small" 
+                  danger
+                  icon={<DeleteOutlined />}
+                  block
+                >
+                  禁用
+                </Button>
+              </Popconfirm>
+            </Space>
+          )
+        }
         
         return (
           <Space>
@@ -327,17 +391,25 @@ const ShareManagement = () => {
   return (
     <div>
       <Card>
-        <div style={{ marginBottom: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <Title level={4}>
+        <div style={{ 
+          marginBottom: 16, 
+          display: 'flex', 
+          justifyContent: 'space-between', 
+          alignItems: 'center',
+          flexDirection: isMobile ? 'column' : 'row',
+          gap: isMobile ? 12 : 0
+        }}>
+          <Title level={4} style={{ margin: 0 }}>
             <ShareAltOutlined /> 分享链接管理
           </Title>
-          <Space>
+          <Space direction={isMobile ? 'vertical' : 'horizontal'} style={{ width: isMobile ? '100%' : 'auto' }}>
             {selectedRowKeys.length > 0 && (
-              <Space>
+              <Space direction={isMobile ? 'vertical' : 'horizontal'} style={{ width: isMobile ? '100%' : 'auto' }}>
                 <Text>已选择 {selectedRowKeys.length} 项</Text>
                 <Button 
                   size="small"
                   onClick={() => setBatchExtendModalVisible(true)}
+                  block={isMobile}
                 >
                   批量延长有效期
                 </Button>
@@ -351,13 +423,14 @@ const ShareManagement = () => {
                   <Button 
                     size="small"
                     danger
+                    block={isMobile}
                   >
                     批量删除
                   </Button>
                 </Popconfirm>
               </Space>
             )}
-            <Button icon={<LinkOutlined />} onClick={fetchShares}>
+            <Button icon={<LinkOutlined />} onClick={fetchShares} block={isMobile}>
               刷新列表
             </Button>
           </Space>
@@ -377,13 +450,15 @@ const ShareManagement = () => {
             columns={columns} 
             dataSource={shares} 
             rowKey="id"
-            rowSelection={rowSelection}
+            rowSelection={isMobile ? undefined : rowSelection}
             pagination={{ 
-              pageSize: 10,
-              showSizeChanger: true,
-              showQuickJumper: true,
-              showTotal: (total) => `共 ${total} 条记录`
+              pageSize: isMobile ? 5 : 10,
+              showSizeChanger: !isMobile,
+              showQuickJumper: !isMobile,
+              simple: isMobile,
+              showTotal: !isMobile ? (total) => `共 ${total} 条记录` : undefined
             }}
+            scroll={{ x: isMobile ? 800 : undefined }}
           />
         )}
       </Card>

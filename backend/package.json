@@ -10,7 +10,27 @@
     "init-db": "node scripts/init-db.js",
     "backup": "node scripts/backup-data.js",
     "migrate": "node scripts/migrate-db.js",
+    "build": "node scripts/build-app.js",
+    "build:win": "pkg . --targets node18-win-x64 --output dist/file-share-win.exe",
+    "build:linux": "pkg . --targets node18-linux-x64 --output dist/file-share-linux",
+    "build:macos": "pkg . --targets node18-macos-x64 --output dist/file-share-macos",
+    "build:all": "npm run build",
     "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "bin": "server.js",
+  "pkg": {
+    "assets": [
+      "src/**/*",
+      "scripts/**/*",
+      ".env.example",
+      "node_modules/jimp/**/*"
+    ],
+    "outputPath": "dist",
+    "targets": [
+      "node18-win-x64",
+      "node18-linux-x64",
+      "node18-macos-x64"
+    ]
   },
   "keywords": [
     "file-share",
@@ -43,6 +63,7 @@
     "winston": "^3.3.3"
   },
   "devDependencies": {
-    "nodemon": "^3.0.2"
+    "nodemon": "^3.0.2",
+    "pkg": "^5.8.1"
   }
 }

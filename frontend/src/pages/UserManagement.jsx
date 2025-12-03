@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { 
   Card, 
   Button, 
@@ -29,10 +29,23 @@ const UserManagement = () => {
   const [isModalVisible, setIsModalVisible] = useState(false)
   const [isPasswordModalVisible, setIsPasswordModalVisible] = useState(false)
   const [editingUser, setEditingUser] = useState(null)
+  const [isMobile, setIsMobile] = useState(false)
   const [form] = Form.useForm()
   const [passwordForm] = Form.useForm()
   const queryClient = useQueryClient()
   const { user: currentUser } = useAuthStore()
+
+  // 检测是否为移动设备
+  useEffect(() => {
+    const checkMobile = () => {
+      setIsMobile(window.innerWidth < 768)
+    }
+    
+    checkMobile()
+    window.addEventListener('resize', checkMobile)
+    
+    return () => window.removeEventListener('resize', checkMobile)
+  }, [])
 
   // 获取用户列表
   const { data: users = [], isLoading } = useQuery(
@@ -170,24 +183,27 @@ const UserManagement = () => {
     {
       title: 'ID',
       dataIndex: 'id',
-      key: 'id'
+      key: 'id',
+      width: isMobile ? 50 : 80,
     },
     {
       title: '用户名',
       dataIndex: 'username',
-      key: 'username'
+      key: 'username',
+      ellipsis: true,
     },
     {
       title: '角色',
       dataIndex: 'role',
       key: 'role',
+      width: isMobile ? 80 : 100,
       render: (role) => (
         <Tag color={role === 'admin' ? 'red' : 'blue'}>
           {role === 'admin' ? '管理员' : '普通用户'}
         </Tag>
       )
     },
-    {
+    ...(!isMobile ? [{
       title: '权限',
       dataIndex: 'menuPermissions',
       key: 'menuPermissions',
@@ -200,26 +216,30 @@ const UserManagement = () => {
           ))}
         </>
       )
-    },
+    }] : []),
     {
       title: '操作',
       key: 'actions',
+      fixed: isMobile ? 'right' : false,
+      width: isMobile ? 120 : 300,
       render: (_, record) => (
-        <Space>
+        <Space direction={isMobile ? 'vertical' : 'horizontal'} size="small">
           <Button 
             type="primary" 
             icon={<EditOutlined />}
             size="small"
             onClick={() => handleOpenModal(record)}
+            block={isMobile}
           >
-            编辑
+            {isMobile ? '编辑' : '编辑'}
           </Button>
           <Button 
             icon={<KeyOutlined />}
             size="small"
             onClick={() => handleChangePassword(record)}
+            block={isMobile}
           >
-            修改密码
+            {isMobile ? '密码' : '修改密码'}
           </Button>
           {record.id !== currentUser?.id && (
             <Popconfirm
@@ -235,6 +255,7 @@ const UserManagement = () => {
                 icon={<DeleteOutlined />}
                 size="small"
                 loading={deleteUserMutation.isLoading}
+                block={isMobile}
               >
                 删除
               </Button>
@@ -247,12 +268,20 @@ const UserManagement = () => {
 
   return (
     <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
-        <h2>用户管理</h2>
+      <div style={{ 
+        display: 'flex', 
+        justifyContent: 'space-between', 
+        alignItems: 'center', 
+        marginBottom: 24,
+        flexDirection: isMobile ? 'column' : 'row',
+        gap: isMobile ? 16 : 0
+      }}>
+        <h2 style={{ margin: 0 }}>用户管理</h2>
         <Button 
           type="primary" 
           icon={<PlusOutlined />}
           onClick={() => handleOpenModal()}
+          block={isMobile}
         >
           新建用户
         </Button>
@@ -264,7 +293,11 @@ const UserManagement = () => {
           dataSource={users} 
           rowKey="id"
           loading={isLoading}
-          pagination={{ pageSize: 10 }}
+          pagination={{ 
+            pageSize: isMobile ? 5 : 10,
+            simple: isMobile
+          }}
+          scroll={{ x: isMobile ? 600 : undefined }}
         />
       </Card>
 

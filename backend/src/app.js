@@ -44,26 +44,64 @@ async function initializeApp() {
 
         // CORS配置（支持多个源）
         const allowedOrigins = config.corsOrigin.split(',').map(origin => origin.trim());
-        app.use(cors({
-            origin: function (origin, callback) {
-                // 允许没有 origin 的请求（如 Postman）
-                if (!origin) return callback(null, true);
-                
-                if (allowedOrigins.indexOf(origin) !== -1) {
-                    callback(null, true);
-                } else {
-                    callback(new Error('Not allowed by CORS'));
-                }
-            },
-            credentials: true
-        }));
+        
+        // 生产环境的 CORS 配置
+        if (config.nodeEnv === 'production') {
+            // 生产环境：允许所有源或配置的源
+            if (config.corsOrigin === '*' || allowedOrigins.includes('*')) {
+                app.use(cors({
+                    origin: true,
+                    credentials: true,
+                    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+                    allowedHeaders: ['Content-Type', 'Authorization']
+                }));
+            } else {
+                app.use(cors({
+                    origin: function (origin, callback) {
+                        // 允许没有 origin 的请求（如直接访问、Postman、同源请求）
+                        if (!origin) return callback(null, true);
+                        
+                        // 检查是否在允许列表中
+                        if (allowedOrigins.indexOf(origin) !== -1) {
+                            callback(null, true);
+                        } else {
+                            // 生产环境记录但允许请求
+                            logger.warn(`CORS: 未配置的源尝试访问: ${origin}`);
+                            callback(null, true); // 允许但记录日志
+                        }
+                    },
+                    credentials: true,
+                    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+                    allowedHeaders: ['Content-Type', 'Authorization']
+                }));
+            }
+        } else {
+            // 开发环境：更宽松的配置
+            app.use(cors({
+                origin: function (origin, callback) {
+                    // 允许没有 origin 的请求
+                    if (!origin) return callback(null, true);
+                    
+                    if (allowedOrigins.indexOf(origin) !== -1) {
+                        callback(null, true);
+                    } else {
+                        logger.warn(`CORS: 未配置的源尝试访问: ${origin}`);
+                        callback(null, true); // 开发环境允许所有
+                    }
+                },
+                credentials: true,
+                methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+                allowedHeaders: ['Content-Type', 'Authorization']
+            }));
+        }
 
         // 请求日志
         app.use(requestLogger);
 
-        // 请求体解析
-        app.use(express.json({ limit: '50mb' }));
-        app.use(express.urlencoded({ limit: '50mb', extended: true }));
+        // 请求体解析 - 增加限制以支持大文件上传
+        const bodyLimit = process.env.BODY_LIMIT || '500mb';
+        app.use(express.json({ limit: bodyLimit }));
+        app.use(express.urlencoded({ limit: bodyLimit, extended: true }));
 
         // 速率限制
         app.use('/api/', apiLimiter);

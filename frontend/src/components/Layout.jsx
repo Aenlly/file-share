@@ -1,5 +1,5 @@
 import { Outlet, useNavigate, useLocation } from 'react-router-dom'
-import { Layout as AntLayout, Menu, Button, Avatar, Dropdown, Space } from 'antd'
+import { Layout as AntLayout, Menu, Button, Avatar, Dropdown, Space, Drawer } from 'antd'
 import { 
   DashboardOutlined, 
   FolderOutlined, 
@@ -92,28 +92,7 @@ const Layout = () => {
     }
   ]
 
-  // 移动端菜单
-  const MobileMenu = () => (
-    <AntLayout.Drawer
-      title="文件分享系统"
-      placement="left"
-      onClose={() => setDrawerVisible(false)}
-      open={drawerVisible}
-      bodyStyle={{ padding: 0 }}
-      width={250}
-    >
-      <Menu
-        theme="dark"
-        mode="inline"
-        selectedKeys={[location.pathname]}
-        items={menuItems}
-        onClick={({ key }) => {
-          handleMenuClick({ key })
-          setDrawerVisible(false)
-        }}
-      />
-    </AntLayout.Drawer>
-  )
+
 
   return (
     <AntLayout style={{ minHeight: '100vh' }}>
@@ -134,7 +113,27 @@ const Layout = () => {
       )}
       
       {/* 移动端抽屉菜单 */}
-      {isMobile && <MobileMenu />}
+      {isMobile && (
+        <Drawer
+          title="文件分享系统"
+          placement="left"
+          onClose={() => setDrawerVisible(false)}
+          open={drawerVisible}
+          bodyStyle={{ padding: 0, background: '#001529' }}
+          width={250}
+        >
+          <Menu
+            theme="dark"
+            mode="inline"
+            selectedKeys={[location.pathname]}
+            items={menuItems}
+            onClick={({ key }) => {
+              handleMenuClick({ key })
+              setDrawerVisible(false)
+            }}
+          />
+        </Drawer>
+      )}
       
       <AntLayout>
         <Header style={{ padding: 0, background: '#fff', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>

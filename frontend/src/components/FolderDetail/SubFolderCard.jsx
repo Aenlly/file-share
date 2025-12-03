@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Card, Button, Table, Space, Popconfirm, Modal, Input, Typography, message } from 'antd'
 import { FileOutlined, DeleteOutlined } from '@ant-design/icons'
 import { useNavigate } from 'react-router-dom'
@@ -11,6 +11,19 @@ const SubFolderCard = ({ folderId, subFolders, onRefresh }) => {
   const navigate = useNavigate()
   const [createModalVisible, setCreateModalVisible] = useState(false)
   const [subFolderName, setSubFolderName] = useState('')
+  const [isMobile, setIsMobile] = useState(false)
+
+  // 检测是否为移动设备
+  useEffect(() => {
+    const checkMobile = () => {
+      setIsMobile(window.innerWidth < 768)
+    }
+    
+    checkMobile()
+    window.addEventListener('resize', checkMobile)
+    
+    return () => window.removeEventListener('resize', checkMobile)
+  }, [])
 
   const createSubFolderMutation = useMutation(
     async (folderData) => {
@@ -62,10 +75,12 @@ const SubFolderCard = ({ folderId, subFolders, onRefresh }) => {
       title: '文件夹名称',
       dataIndex: 'alias',
       key: 'alias',
+      ellipsis: true,
       render: (text, record) => (
         <Button 
           type="link" 
           onClick={() => navigate(`/folder/${record.id}`)}
+          style={{ padding: isMobile ? '0 4px' : '0 8px' }}
         >
           <FileOutlined /> {text}
         </Button>
@@ -74,11 +89,14 @@ const SubFolderCard = ({ folderId, subFolders, onRefresh }) => {
     {
       title: '操作',
       key: 'action',
+      width: isMobile ? 120 : 180,
       render: (_, record) => (
-        <Space>
+        <Space direction={isMobile ? 'vertical' : 'horizontal'} size="small">
           <Button 
             type="link" 
             onClick={() => navigate(`/folder/${record.id}`)}
+            size="small"
+            block={isMobile}
           >
             打开
           </Button>
@@ -93,6 +111,8 @@ const SubFolderCard = ({ folderId, subFolders, onRefresh }) => {
               type="link" 
               danger
               icon={<DeleteOutlined />}
+              size="small"
+              block={isMobile}
             >
               删除
             </Button>
@@ -105,12 +125,20 @@ const SubFolderCard = ({ folderId, subFolders, onRefresh }) => {
   return (
     <>
       <Card style={{ marginBottom: 24 }}>
-        <div style={{ marginBottom: 16, display: 'flex', justifyContent: 'space-between' }}>
+        <div style={{ 
+          marginBottom: 16, 
+          display: 'flex', 
+          justifyContent: 'space-between',
+          flexDirection: isMobile ? 'column' : 'row',
+          gap: isMobile ? 12 : 0
+        }}>
           <span>子文件夹</span>
           <Button 
             type="primary" 
             icon={<FileOutlined />}
             onClick={() => setCreateModalVisible(true)}
+            block={isMobile}
+            size={isMobile ? 'middle' : 'default'}
           >
             创建子文件夹
           </Button>
@@ -123,6 +151,7 @@ const SubFolderCard = ({ folderId, subFolders, onRefresh }) => {
             pagination={false}
             size="small"
             columns={columns}
+            scroll={{ x: isMobile ? 400 : undefined }}
           />
         ) : (
           <div style={{ textAlign: 'center', padding: '20px', color: '#999' }}>

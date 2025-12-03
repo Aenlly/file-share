@@ -14,10 +14,14 @@ const FileModel = require('../models/FileModel');
 const ShareModel = require('../models/ShareModel');
 const { FILES_ROOT, generateUniqueFilename, decodeFilename } = require('../utils/fileHelpers');
 
-// 配置multer
+// 配置multer - 从环境变量读取文件大小限制
+const MAX_FILE_SIZE = parseInt(process.env.MAX_FILE_SIZE || '524288000'); // 默认 500MB
 const upload = multer({
     storage: multer.memoryStorage(),
-    limits: { fileSize: 104857600 } // 100MB
+    limits: { 
+        fileSize: MAX_FILE_SIZE,
+        files: 200 // 最多同时上传 200 个文件
+    }
 });
 
 /**
@@ -349,6 +353,191 @@ router.get('/:folderId/files', authenticate, async (req, res, next) => {
         next(error);
     }
 });
+
+/**
+ * 分片上传 - 初始化
+ */
+const chunkUploads = new Map(); // 存储分片上传的临时数据
+
+router.post('/:folderId/chunk/init', authenticate, async (req, res, next) => {
+    try {
+        const folderId = parseInt(req.params.folderId);
+        const { fileName, fileSize } = req.body;
+
+        if (!fileName || !fileSize) {
+            return res.status(400).json({ error: '文件名和文件大小不能为空' });
+        }
+
+        const folder = await FolderModel.findById(folderId);
+        if (!folder) {
+            return res.status(404).json({ error: '文件夹不存在' });
+        }
+
+        const hasAccess = await isFolderOwnedByUser(folderId, req.user.username);
+        if (!hasAccess) {
+            return res.status(403).json({ error: '无权访问' });
+        }
+
+        // 生成唯一的上传ID
+        const uploadId = `${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+        
+        // 解码文件名（如果是UTF8编码的）
+        let originalName = fileName;
+        if (originalName.startsWith('UTF8:')) {
+            originalName = decodeFilename(originalName);
+        }
+
+        // 存储上传信息
+        chunkUploads.set(uploadId, {
+            folderId,
+            fileName: originalName,
+            fileSize,
+            chunks: [],
+            owner: req.user.username,
+            createdAt: Date.now()
+        });
+
+        logger.info(`初始化分片上传: uploadId=${uploadId}, fileName=${originalName}, fileSize=${fileSize}`);
+
+        res.json({ uploadId, fileName: originalName });
+    } catch (error) {
+        next(error);
+    }
+});
+
+/**
+ * 分片上传 - 上传分片
+ */
+router.post('/:folderId/chunk', authenticate, async (req, res, next) => {
+    try {
+        const folderId = parseInt(req.params.folderId);
+        const { uploadId, chunkIndex, chunk } = req.body;
+
+        if (!uploadId || chunkIndex === undefined || !chunk) {
+            return res.status(400).json({ error: '缺少必要参数' });
+        }
+
+        const uploadInfo = chunkUploads.get(uploadId);
+        if (!uploadInfo) {
+            return res.status(404).json({ error: '上传会话不存在或已过期' });
+        }
+
+        if (uploadInfo.folderId !== folderId) {
+            return res.status(400).json({ error: '文件夹ID不匹配' });
+        }
+
+        // 将base64转换为Buffer
+        const chunkBuffer = Buffer.from(chunk, 'base64');
+        
+        // 存储分片
+        uploadInfo.chunks[chunkIndex] = chunkBuffer;
+
+        logger.info(`接收分片: uploadId=${uploadId}, chunkIndex=${chunkIndex}, size=${chunkBuffer.length}`);
+
+        res.json({ success: true, chunkIndex });
+    } catch (error) {
+        next(error);
+    }
+});
+
+/**
+ * 分片上传 - 完成上传
+ */
+router.post('/:folderId/chunk/complete', authenticate, async (req, res, next) => {
+    try {
+        const folderId = parseInt(req.params.folderId);
+        const { uploadId } = req.body;
+
+        if (!uploadId) {
+            return res.status(400).json({ error: '缺少uploadId' });
+        }
+
+        const uploadInfo = chunkUploads.get(uploadId);
+        if (!uploadInfo) {
+            return res.status(404).json({ error: '上传会话不存在或已过期' });
+        }
+
+        if (uploadInfo.folderId !== folderId) {
+            return res.status(400).json({ error: '文件夹ID不匹配' });
+        }
+
+        const folder = await FolderModel.findById(folderId);
+        if (!folder) {
+            chunkUploads.delete(uploadId);
+            return res.status(404).json({ error: '文件夹不存在' });
+        }
+
+        // 合并所有分片
+        const fileBuffer = Buffer.concat(uploadInfo.chunks);
+        
+        // 计算文件哈希
+        const fileHash = calculateFileHash(fileBuffer);
+        
+        // 检查文件是否已存在
+        const existingByHash = await FileModel.findByHash(fileHash, folderId);
+        if (existingByHash) {
+            chunkUploads.delete(uploadId);
+            return res.status(409).json({ 
+                error: '文件已存在',
+                existingFile: existingByHash.originalName 
+            });
+        }
+
+        // 生成保存的文件名
+        const savedName = generateUniqueFilename(uploadInfo.fileName);
+        const dirPath = path.join(FILES_ROOT, folder.physicalPath);
+        const filePath = path.join(dirPath, savedName);
+
+        // 保存文件
+        await fs.ensureDir(dirPath);
+        await fs.writeFile(filePath, fileBuffer);
+
+        // 创建文件记录
+        const fileRecord = await FileModel.create({
+            folderId,
+            originalName: uploadInfo.fileName,
+            savedName,
+            size: fileBuffer.length,
+            mimeType: 'application/octet-stream', // 分片上传时可能无法获取准确的MIME类型
+            owner: uploadInfo.owner,
+            hash: fileHash
+        });
+
+        // 清理上传信息
+        chunkUploads.delete(uploadId);
+
+        logger.info(`分片上传完成: ${uploadInfo.fileName} (文件夹: ${folder.alias})`);
+
+        res.json({
+            success: true,
+            file: {
+                id: fileRecord.id,
+                originalName: uploadInfo.fileName,
+                savedName,
+                size: fileBuffer.length
+            }
+        });
+    } catch (error) {
+        // 清理上传信息
+        if (req.body.uploadId) {
+            chunkUploads.delete(req.body.uploadId);
+        }
+        next(error);
+    }
+});
+
+// 定期清理过期的分片上传会话（超过1小时）
+setInterval(() => {
+    const now = Date.now();
+    const oneHour = 60 * 60 * 1000;
+    
+    for (const [uploadId, uploadInfo] of chunkUploads.entries()) {
+        if (now - uploadInfo.createdAt > oneHour) {
+            chunkUploads.delete(uploadId);
+            logger.info(`清理过期的分片上传会话: ${uploadId}`);
+        }
+    }
+}, 10 * 60 * 1000); // 每10分钟检查一次
 
 /**
  * 上传文件
