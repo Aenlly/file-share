@@ -5,6 +5,7 @@ const fs = require('fs-extra');
 
 const { authenticate } = require('../middleware/auth');
 const logger = require('../utils/logger');
+const config = require('../config');
 const FolderModel = require('../models/FolderModel');
 const FileModel = require('../models/FileModel');
 const { FILES_ROOT, generateUniqueFilename, decodeFilename } = require('../utils/fileHelpers');
@@ -12,6 +13,16 @@ const { isFolderOwnedByUser, calculateFileHash } = require('./helpers/fileHelper
 
 // 存储分片上传的临时数据
 const chunkUploads = new Map();
+
+/**
+ * 获取上传配置（分片大小等）
+ */
+router.get('/config', authenticate, (req, res) => {
+    res.json({
+        chunkSize: config.chunkSize,
+        maxFileSize: config.maxFileSize
+    });
+});
 
 /**
  * 分片上传 - 初始化

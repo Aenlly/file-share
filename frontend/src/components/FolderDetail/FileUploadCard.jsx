@@ -1,9 +1,12 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Card, Button, Upload, Switch, Progress, message, Modal } from 'antd'
 import { UploadOutlined, InboxOutlined } from '@ant-design/icons'
 import api from '../../utils/api'
 
 const { Dragger } = Upload
+
+// 默认分片大小 5MB
+const DEFAULT_CHUNK_SIZE = 5 * 1024 * 1024
 
 const FileUploadCard = ({ folderId, onUploadSuccess, isMobile = false }) => {
   const [fileList, setFileList] = useState([])
@@ -11,6 +14,22 @@ const FileUploadCard = ({ folderId, onUploadSuccess, isMobile = false }) => {
   const [forceUpload, setForceUpload] = useState(false)
   const [useChunkUpload, setUseChunkUpload] = useState(false)
   const [uploadProgress, setUploadProgress] = useState({})
+  const [chunkSize, setChunkSize] = useState(DEFAULT_CHUNK_SIZE)
+
+  // 获取上传配置
+  useEffect(() => {
+    const fetchUploadConfig = async () => {
+      try {
+        const response = await api.get('/folders/upload/config')
+        if (response.data.chunkSize) {
+          setChunkSize(response.data.chunkSize)
+        }
+      } catch (error) {
+        console.warn('获取上传配置失败，使用默认值:', error.message)
+      }
+    }
+    fetchUploadConfig()
+  }, [])
 
   // 分片上传单个文件
   const uploadFileInChunks = async (file) => {
