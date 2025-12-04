@@ -9,7 +9,49 @@ const logger = require('../utils/logger');
 const ShareModel = require('../models/ShareModel');
 const FolderModel = require('../models/FolderModel');
 const FileModel = require('../models/FileModel');
+const ShareAccessLogModel = require('../models/ShareAccessLogModel');
 const { FILES_ROOT } = require('../utils/fileHelpers');
+
+/**
+ * 获取访问者信息（IP和设备码）
+ */
+function getVisitorInfo(req) {
+    // 获取真实IP（考虑代理）
+    const ip = req.headers['x-forwarded-for']?.split(',')[0]?.trim() 
+        || req.headers['x-real-ip'] 
+        || req.connection?.remoteAddress 
+        || req.socket?.remoteAddress
+        || 'unknown';
+    
+    // 获取设备码（从请求头或cookie）
+    const deviceId = req.headers['x-device-id'] 
+        || req.cookies?.deviceId 
+        || req.headers['user-agent']?.substring(0, 100) // 降级使用UA的一部分
+        || 'unknown';
+    
+    const userAgent = req.headers['user-agent'] || '';
+    
+    return { ip, deviceId, userAgent };
+}
+
+/**
+ * 记录分享访问日志（异步，不阻塞响应）
+ */
+async function logShareAccess(req, share) {
+    try {
+        const { ip, deviceId, userAgent } = getVisitorInfo(req);
+        await ShareAccessLogModel.logAccess({
+            shareCode: share.code,
+            shareId: share.id,
+            ip,
+            deviceId,
+            userAgent
+        });
+    } catch (error) {
+        // 记录日志失败不影响正常访问
+        logger.error(`记录分享访问日志失败: ${error.message}`);
+    }
+}
 
 /**
  * 获取分享信息（单数形式，用于兼容前端）
@@ -61,6 +103,11 @@ router.get('/share/:code', async (req, res, next) => {
         }
         
         logger.info(`分享验证成功: rootFolderId=${share.folderId}, targetFolderId=${targetFolderId}, folderAlias=${targetFolder.alias}`);
+
+        // 记录访问日志（仅在访问根目录时记录，避免重复）
+        if (!folderId || targetFolderId === share.folderId) {
+            logShareAccess(req, share);
+        }
 
         // 获取目标文件夹的文件列表
         const files = await FileModel.findByFolder(targetFolderId);

@@ -122,10 +122,9 @@ router.get('/stats', authenticate, async (req, res, next) => {
         const shares = await ShareModel.find({ owner: username });
         const shareCount = shares.length;
         
-        // 获取活跃分享数量（未过期）
-        const now = new Date().toISOString();
-        const activeShares = shares.filter(share => share.expireTime > now);
-        const activeShareCount = activeShares.length;
+        // 获取活跃分享数量（7天内有唯一访问的分享）
+        const ShareAccessLogModel = require('../models/ShareAccessLogModel');
+        const activeShareCount = await ShareAccessLogModel.countActiveShares(shares, 7);
         
         logger.info(`获取用户统计: ${username}`);
         
@@ -139,6 +138,72 @@ router.get('/stats', authenticate, async (req, res, next) => {
         });
     } catch (error) {
         logger.error(`获取用户统计失败:`, error);
+        next(error);
+    }
+});
+
+/**
+ * 获取所有用户统计信息（仅管理员）
+ */
+router.get('/stats-all', authenticate, requireAdmin, async (req, res, next) => {
+    try {
+        const FolderModel = require('../models/FolderModel');
+        const FileModel = require('../models/FileModel');
+        const RecycleBinModel = require('../models/RecycleBinModel');
+        const ShareModel = require('../models/ShareModel');
+        const ShareAccessLogModel = require('../models/ShareAccessLogModel');
+        
+        const users = await UserModel.getAll();
+        const allStats = [];
+
+        for (const user of users) {
+            // 获取文件夹数量
+            const folders = await FolderModel.findByOwner(user.username);
+            
+            // 获取文件数量和总大小
+            const files = await FileModel.find({ owner: user.username });
+            const totalSize = files.reduce((sum, file) => sum + (file.size || 0), 0);
+            
+            // 获取回收站数量
+            const recycleBinFiles = await RecycleBinModel.findByOwner(user.username);
+            
+            // 获取分享链接数量
+            const shares = await ShareModel.find({ owner: user.username });
+            
+            // 获取活跃分享数量（7天内有唯一访问的分享）
+            const activeShareCount = await ShareAccessLogModel.countActiveShares(shares, 7);
+            
+            allStats.push({
+                userId: user.id,
+                username: user.username,
+                role: user.role,
+                folders: folders.length,
+                files: files.length,
+                totalSize: totalSize,
+                recycleBin: recycleBinFiles.length,
+                shares: shares.length,
+                activeShares: activeShareCount
+            });
+        }
+
+        // 计算总计
+        const totals = {
+            totalUsers: users.length,
+            totalFolders: allStats.reduce((sum, s) => sum + s.folders, 0),
+            totalFiles: allStats.reduce((sum, s) => sum + s.files, 0),
+            totalSize: allStats.reduce((sum, s) => sum + s.totalSize, 0),
+            totalShares: allStats.reduce((sum, s) => sum + s.shares, 0),
+            totalActiveShares: allStats.reduce((sum, s) => sum + s.activeShares, 0),
+        };
+
+        logger.info(`获取全部用户统计 (查询者: ${req.user.username})`);
+        
+        res.json({
+            users: allStats,
+            totals
+        });
+    } catch (error) {
+        logger.error(`获取全部用户统计失败:`, error);
         next(error);
     }
 });

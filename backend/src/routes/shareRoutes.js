@@ -5,6 +5,7 @@ const { authenticate } = require('../middleware/auth');
 const logger = require('../utils/logger');
 const ShareModel = require('../models/ShareModel');
 const FolderModel = require('../models/FolderModel');
+const ShareAccessLogModel = require('../models/ShareAccessLogModel');
 
 /**
  * 获取用户的所有分享
@@ -91,6 +92,9 @@ router.delete('/:shareId', authenticate, async (req, res, next) => {
             return res.status(403).json({ error: '无权删除' });
         }
 
+        // 删除分享的访问日志
+        await ShareAccessLogModel.deleteByShareCode(share.code);
+        
         await ShareModel.delete(shareId);
         logger.info(`删除分享: ID=${shareId}`);
 
@@ -122,6 +126,9 @@ router.post('/batch/delete', authenticate, async (req, res, next) => {
                     continue;
                 }
 
+                // 删除分享的访问日志
+                await ShareAccessLogModel.deleteByShareCode(share.code);
+                
                 await ShareModel.delete(shareId);
                 deletedIds.push(shareId);
             } catch (error) {
