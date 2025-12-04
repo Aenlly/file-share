@@ -4,6 +4,7 @@ const { authenticate, requireAdmin, generateToken } = require('../middleware/aut
 const { loginLimiter } = require('../middleware/rateLimiter');
 const logger = require('../utils/logger');
 const UserModel = require('../models/UserModel');
+const { sendError } = require('../config/errorCodes');
 
 /**
  * 用户登录
@@ -13,19 +14,20 @@ router.post('/login', loginLimiter, async (req, res, next) => {
         const { username, password } = req.body;
 
         if (!username || !password) {
-            return res.status(400).json({ error: '用户名和密码不能为空' });
+            return sendError(res, 'AUTH_USERNAME_REQUIRED');
         }
 
         const user = await UserModel.verifyPassword(username, password);
         if (!user) {
             logger.warn(`登录失败: 用户名或密码错误 (${username})`);
-            return res.status(401).json({ error: '用户名或密码错误' });
+            return sendError(res, 'AUTH_INVALID_CREDENTIALS');
         }
 
         const token = generateToken(user);
         logger.info(`用户登录成功: ${username}`);
 
         res.json({
+            success: true,
             token,
             user
         });

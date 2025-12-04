@@ -14,7 +14,19 @@ const useAuthStore = create(
         set({ isLoading: true })
         try {
           const response = await api.post('/users/login', { username, password })
-          const { token, user } = response.data
+          const data = response.data
+          
+          // 检查业务错误码（HTTP 200 但业务失败）
+          if (data.success === false || data.code) {
+            set({ isLoading: false })
+            return { 
+              success: false, 
+              code: data.code,
+              message: data.error || data.message || '登录失败' 
+            }
+          }
+          
+          const { token, user } = data
           
           set({
             user,
@@ -29,9 +41,12 @@ const useAuthStore = create(
           return { success: true }
         } catch (error) {
           set({ isLoading: false })
+          // 处理HTTP错误或网络错误
+          const errorData = error.response?.data
           return { 
-            success: false, 
-            message: error.response?.data?.message || '登录失败' 
+            success: false,
+            code: errorData?.code,
+            message: errorData?.error || errorData?.message || '登录失败，请检查网络连接' 
           }
         }
       },
