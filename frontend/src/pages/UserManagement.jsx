@@ -203,20 +203,6 @@ const UserManagement = () => {
         </Tag>
       )
     },
-    ...(!isMobile ? [{
-      title: '权限',
-      dataIndex: 'menuPermissions',
-      key: 'menuPermissions',
-      render: (permissions) => (
-        <>
-          {permissions.map(permission => (
-            <Tag key={permission} style={{ marginBottom: 4 }}>
-              {permission}
-            </Tag>
-          ))}
-        </>
-      )
-    }] : []),
     {
       title: '操作',
       key: 'actions',
@@ -389,6 +375,8 @@ const UserManagement = () => {
           </Form.Item>
         </Form>
       </Modal>
+
+
     </div>
   )
 }
