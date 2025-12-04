@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 
 const { authenticate } = require('../middleware/auth');
+const { validateShareExpiration } = require('../middleware/validation');
 const logger = require('../utils/logger');
 const ShareModel = require('../models/ShareModel');
 const FolderModel = require('../models/FolderModel');
@@ -56,7 +57,7 @@ router.post('/', authenticate, async (req, res, next) => {
 /**
  * 更新分享过期时间
  */
-router.put('/:shareId', authenticate, async (req, res, next) => {
+router.put('/:shareId', authenticate, validateShareExpiration, async (req, res, next) => {
     try {
         const shareId = parseInt(req.params.shareId);
         const { expireInMs } = req.body;
@@ -152,7 +153,7 @@ router.post('/batch/delete', authenticate, async (req, res, next) => {
 /**
  * 批量更新分享过期时间
  */
-router.post('/batch/extend', authenticate, async (req, res, next) => {
+router.post('/batch/extend', authenticate, validateShareExpiration, async (req, res, next) => {
     try {
         const { shareIds, expireInMs } = req.body;
 

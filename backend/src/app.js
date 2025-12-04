@@ -9,6 +9,7 @@ const fs = require('fs-extra');
 const config = require('./config/index');
 const { getDatabaseManager } = require('./database/DatabaseManager');
 const logger = require('./utils/logger');
+const { runStartupChecks } = require('./utils/startupCheck');
 const errorHandler = require('./middleware/errorHandler');
 const requestLogger = require('./middleware/requestLogger');
 const requestIdMiddleware = require('./middleware/requestId');
@@ -28,6 +29,12 @@ const app = express();
  */
 async function initializeApp() {
     try {
+        // 运行启动检查
+        const checksPass = runStartupChecks();
+        if (!checksPass) {
+            process.exit(1);
+        }
+        
         // 初始化数据库
         const dbManager = getDatabaseManager(config);
         await dbManager.initialize();

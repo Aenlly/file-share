@@ -3,6 +3,8 @@ const router = express.Router();
 const { authenticate, requireAdmin, generateToken } = require('../middleware/auth');
 const { loginLimiter } = require('../middleware/rateLimiter');
 const { loginProtectionMiddleware } = require('../middleware/loginProtection');
+const { validateCreateUser, validateChangePassword } = require('../middleware/validation');
+const { sanitizeLogData } = require('../utils/logSanitizer');
 const logger = require('../utils/logger');
 const UserModel = require('../models/UserModel');
 const { sendError } = require('../config/errorCodes');
@@ -69,13 +71,9 @@ router.get('/', authenticate, requireAdmin, async (req, res, next) => {
 /**
  * 创建用户（仅管理员）
  */
-router.post('/', authenticate, requireAdmin, async (req, res, next) => {
+router.post('/', authenticate, requireAdmin, validateCreateUser, async (req, res, next) => {
     try {
         const { username, password, role } = req.body;
-
-        if (!username || !password) {
-            return sendError(res, 'USER_INVALID_INPUT');
-        }
 
         const user = await UserModel.create({
             username,
@@ -253,7 +251,7 @@ router.put('/:id', authenticate, async (req, res, next) => {
 /**
  * 修改密码
  */
-router.post('/:id/change-password', authenticate, async (req, res, next) => {
+router.post('/:id/change-password', authenticate, validateChangePassword, async (req, res, next) => {
     try {
         const userId = parseInt(req.params.id);
         const { oldPassword, newPassword } = req.body;

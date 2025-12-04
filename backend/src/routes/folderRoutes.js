@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 
 const { authenticate } = require('../middleware/auth');
+const { validateFolderName } = require('../middleware/validation');
 const logger = require('../utils/logger');
 const config = require('../config');
 const FolderModel = require('../models/FolderModel');
@@ -52,7 +53,7 @@ router.get('/', authenticate, async (req, res, next) => {
 /**
  * 创建文件夹
  */
-router.post('/', authenticate, async (req, res, next) => {
+router.post('/', authenticate, validateFolderName, async (req, res, next) => {
     try {
         const { alias, parentId } = req.body;
 

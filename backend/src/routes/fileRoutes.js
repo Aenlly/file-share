@@ -6,7 +6,9 @@ const fs = require('fs-extra');
 
 const { authenticate } = require('../middleware/auth');
 const { uploadLimiter } = require('../middleware/rateLimiter');
+const { sanitizeFilename, validateFileType } = require('../middleware/validation');
 const logger = require('../utils/logger');
+const config = require('../config');
 const FolderModel = require('../models/FolderModel');
 const FileModel = require('../models/FileModel');
 const { FILES_ROOT, generateUniqueFilename, decodeFilename } = require('../utils/fileHelpers');
@@ -81,6 +83,19 @@ router.post('/:folderId/upload', authenticate, uploadLimiter, upload.array('file
                 let originalName = file.originalname;
                 if (originalName.startsWith('UTF8:')) {
                     originalName = decodeFilename(originalName);
+                }
+                
+                // 文件名安全检查
+                originalName = sanitizeFilename(originalName);
+                
+                // 文件类型检查
+                const typeValidation = validateFileType(originalName, config);
+                if (!typeValidation.valid) {
+                    errorFiles.push({
+                        filename: originalName,
+                        error: typeValidation.error
+                    });
+                    continue;
                 }
 
                 const fileHash = calculateFileHash(file.buffer);
@@ -232,7 +247,10 @@ router.delete('/:folderId/file', authenticate, async (req, res, next) => {
 router.get('/:folderId/download/:filename', authenticate, async (req, res, next) => {
     try {
         const folderId = parseInt(req.params.folderId);
-        const filename = decodeURIComponent(req.params.filename);
+        let filename = decodeURIComponent(req.params.filename);
+        
+        // 文件名安全检查（防止路径遍历）
+        filename = sanitizeFilename(filename);
         
         logger.info(`下载文件: folderId=${folderId}, filename=${filename}`);
 
