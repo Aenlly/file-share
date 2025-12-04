@@ -11,6 +11,7 @@ const { getDatabaseManager } = require('./database/DatabaseManager');
 const logger = require('./utils/logger');
 const errorHandler = require('./middleware/errorHandler');
 const requestLogger = require('./middleware/requestLogger');
+const requestIdMiddleware = require('./middleware/requestId');
 const { apiLimiter } = require('./middleware/rateLimiter');
 
 // 导入路由
@@ -94,6 +95,9 @@ async function initializeApp() {
                 allowedHeaders: ['Content-Type', 'Authorization']
             }));
         }
+
+        // 请求ID中间件（必须在其他中间件之前）
+        app.use(requestIdMiddleware);
 
         // 请求日志
         app.use(requestLogger);
