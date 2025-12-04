@@ -4,7 +4,13 @@
  * HTTP状态码统一使用200，业务错误通过code字段区分
  */
 
+// 成功码
+const SUCCESS_CODE = 'APF0000';
+
 const ERROR_CODES = {
+    // ========== 成功 ==========
+    SUCCESS: { code: 'APF0000', message: '操作成功' },
+
     // ========== 认证相关 APF1xx ==========
     AUTH_INVALID_CREDENTIALS: { code: 'APF101', message: '用户名或密码错误' },
     AUTH_TOKEN_MISSING: { code: 'APF102', message: '未提供认证令牌' },
@@ -65,6 +71,18 @@ const ERROR_CODES = {
 };
 
 /**
+ * 创建成功响应
+ */
+function createSuccessResponse(data = null, message = '操作成功') {
+    return {
+        success: true,
+        code: SUCCESS_CODE,
+        message,
+        data
+    };
+}
+
+/**
  * 创建错误响应
  */
 function createErrorResponse(errorKey, customMessage = null) {
@@ -80,6 +98,13 @@ function createErrorResponse(errorKey, customMessage = null) {
 }
 
 /**
+ * 发送成功响应（HTTP 200 + APF0000）
+ */
+function sendSuccess(res, data = null, message = '操作成功') {
+    return res.status(200).json(createSuccessResponse(data, message));
+}
+
+/**
  * 发送错误响应（HTTP 200 + 业务错误码）
  */
 function sendError(res, errorKey, customMessage = null) {
@@ -88,7 +113,10 @@ function sendError(res, errorKey, customMessage = null) {
 }
 
 module.exports = {
+    SUCCESS_CODE,
     ERROR_CODES,
+    createSuccessResponse,
     createErrorResponse,
+    sendSuccess,
     sendError
 };

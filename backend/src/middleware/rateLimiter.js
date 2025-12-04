@@ -45,7 +45,7 @@ const loginLimiter = createRateLimiter({
  */
 const uploadLimiter = createRateLimiter({
     windowMs: 60 * 60 * 1000, // 1小时
-    max: 100, // 每小时最多100次上传
+    max: 1000, // 每小时最多1000次上传
     message: '上传过于频繁，请稍后再试'
 });
 
