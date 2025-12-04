@@ -75,15 +75,27 @@ router.post('/:folderId/upload', authenticate, uploadLimiter, upload.array('file
             return sendError(res, 'PARAM_INVALID', '没有上传文件');
         }
 
-        // 检查存储配额
-        const totalUploadSize = req.files.reduce((sum, file) => sum + file.size, 0);
-        const quotaCheck = await UserModel.checkStorageQuota(req.user.username, totalUploadSize);
+        // 使用锁防止并发上传导致的配额竞态
+        const lockManager = require('../utils/LockManager');
+        const lockKey = `storage:${req.user.username}`;
         
-        if (!quotaCheck.allowed) {
-            const { formatStorageSize } = require('../utils/storageCalculator');
-            return sendError(res, 'STORAGE_QUOTA_EXCEEDED', 
-                `存储空间不足。可用: ${formatStorageSize(quotaCheck.storageAvailable)}, 需要: ${formatStorageSize(totalUploadSize)}`
-            );
+        try {
+            await lockManager.acquire(lockKey, 10000); // 10秒超时
+            
+            // 检查存储配额
+            const totalUploadSize = req.files.reduce((sum, file) => sum + file.size, 0);
+            const quotaCheck = await UserModel.checkStorageQuota(req.user.username, totalUploadSize);
+            
+            if (!quotaCheck.allowed) {
+                lockManager.release(lockKey);
+                const { formatStorageSize } = require('../utils/storageCalculator');
+                return sendError(res, 'STORAGE_QUOTA_EXCEEDED', 
+                    `存储空间不足。可用: ${formatStorageSize(quotaCheck.storageAvailable)}, 需要: ${formatStorageSize(totalUploadSize)}`
+                );
+            }
+        } catch (lockError) {
+            logger.error('获取存储锁失败:', lockError);
+            return sendError(res, 'SYSTEM_BUSY', '系统繁忙，请稍后重试');
         }
 
         const dirPath = path.join(FILES_ROOT, folder.physicalPath);
@@ -203,6 +215,9 @@ router.post('/:folderId/upload', authenticate, uploadLimiter, upload.array('file
             }
         }
 
+        // 释放存储锁
+        lockManager.release(lockKey);
+
         const result = {
             success: uploadedFiles.length > 0,
             uploadedFiles,
@@ -217,6 +232,10 @@ router.post('/:folderId/upload', authenticate, uploadLimiter, upload.array('file
 
         res.json(result);
     } catch (error) {
+        // 确保释放锁
+        const lockManager = require('../utils/LockManager');
+        const lockKey = `storage:${req.user.username}`;
+        lockManager.release(lockKey);
         next(error);
     }
 });

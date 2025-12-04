@@ -51,6 +51,12 @@ function calculateFileHashFromStream(input) {
  */
 async function calculateFileHashSmart(buffer, tempFilePath = null) {
     const LARGE_FILE_THRESHOLD = 10 * 1024 * 1024; // 10MB
+    const VERY_LARGE_FILE_THRESHOLD = 100 * 1024 * 1024; // 100MB
+    
+    // 超大文件：使用采样哈希（更快但不够精确）
+    if (buffer.length > VERY_LARGE_FILE_THRESHOLD) {
+        return calculateSampledHash(buffer);
+    }
     
     // 小文件直接从内存计算
     if (buffer.length < LARGE_FILE_THRESHOLD) {
@@ -84,6 +90,36 @@ async function calculateFileHashSmart(buffer, tempFilePath = null) {
         }
         throw error;
     }
+}
+
+/**
+ * 采样哈希：对超大文件进行采样计算（更快）
+ * 采样策略：文件头 + 文件中间 + 文件尾 + 文件大小
+ * @param {Buffer} buffer - 文件内容
+ * @returns {string} 哈希值
+ */
+function calculateSampledHash(buffer) {
+    const hash = crypto.createHash('md5');
+    const sampleSize = 1024 * 1024; // 每个采样点 1MB
+    
+    // 添加文件大小（防止不同大小文件产生相同哈希）
+    hash.update(Buffer.from(buffer.length.toString()));
+    
+    // 采样文件头
+    hash.update(buffer.slice(0, Math.min(sampleSize, buffer.length)));
+    
+    // 采样文件中间
+    if (buffer.length > sampleSize * 2) {
+        const middleStart = Math.floor(buffer.length / 2) - Math.floor(sampleSize / 2);
+        hash.update(buffer.slice(middleStart, middleStart + sampleSize));
+    }
+    
+    // 采样文件尾
+    if (buffer.length > sampleSize) {
+        hash.update(buffer.slice(-sampleSize));
+    }
+    
+    return hash.digest('hex');
 }
 
 /**

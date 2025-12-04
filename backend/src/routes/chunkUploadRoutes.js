@@ -45,15 +45,29 @@ router.post('/:folderId/chunk/init', authenticate, async (req, res, next) => {
             return sendError(res, 'AUTH_FORBIDDEN');
         }
 
-        // 检查存储配额
-        const UserModel = require('../models/UserModel');
-        const quotaCheck = await UserModel.checkStorageQuota(req.user.username, fileSize);
+        // 使用锁防止并发上传导致的配额竞态
+        const lockManager = require('../utils/LockManager');
+        const lockKey = `storage:${req.user.username}`;
         
-        if (!quotaCheck.allowed) {
-            const { formatStorageSize } = require('../utils/storageCalculator');
-            return sendError(res, 'STORAGE_QUOTA_EXCEEDED', 
-                `存储空间不足。可用: ${formatStorageSize(quotaCheck.storageAvailable)}, 需要: ${formatStorageSize(fileSize)}`
-            );
+        try {
+            await lockManager.acquire(lockKey, 10000); // 10秒超时
+            
+            // 检查存储配额
+            const UserModel = require('../models/UserModel');
+            const quotaCheck = await UserModel.checkStorageQuota(req.user.username, fileSize);
+            
+            if (!quotaCheck.allowed) {
+                lockManager.release(lockKey);
+                const { formatStorageSize } = require('../utils/storageCalculator');
+                return sendError(res, 'STORAGE_QUOTA_EXCEEDED', 
+                    `存储空间不足。可用: ${formatStorageSize(quotaCheck.storageAvailable)}, 需要: ${formatStorageSize(fileSize)}`
+                );
+            }
+            
+            // 配额检查通过，但保持锁直到会话创建完成
+        } catch (lockError) {
+            logger.error('获取存储锁失败:', lockError);
+            return sendError(res, 'SYSTEM_BUSY', '系统繁忙，请稍后重试');
         }
 
         const uploadId = `${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
@@ -80,9 +94,16 @@ router.post('/:folderId/chunk/init', authenticate, async (req, res, next) => {
             owner: req.user.username
         });
 
+        // 释放存储锁
+        lockManager.release(lockKey);
+        
         logger.info(`初始化分片上传: uploadId=${uploadId}, fileName=${originalName}, fileSize=${fileSize}`);
         res.json({ uploadId, fileName: originalName });
     } catch (error) {
+        // 确保释放锁
+        const lockManager = require('../utils/LockManager');
+        const lockKey = `storage:${req.user.username}`;
+        lockManager.release(lockKey);
         next(error);
     }
 });
@@ -206,12 +227,24 @@ router.post('/:folderId/chunk/complete', authenticate, async (req, res, next) =>
     }
 });
 
+// 启动时立即清理一次过期会话
+(async () => {
+    try {
+        const cleanedCount = await UploadSessionModel.cleanExpiredSessions();
+        if (cleanedCount > 0) {
+            logger.info(`启动时清理过期的分片上传会话: ${cleanedCount} 个`);
+        }
+    } catch (error) {
+        logger.error('启动时清理上传会话失败:', error);
+    }
+})();
+
 // 定期清理过期的分片上传会话（每10分钟）
 setInterval(async () => {
     try {
         const cleanedCount = await UploadSessionModel.cleanExpiredSessions();
         if (cleanedCount > 0) {
-            logger.info(`清理过期的分片上传会话: ${cleanedCount} 个`);
+            logger.info(`定期清理过期的分片上传会话: ${cleanedCount} 个`);
         }
     } catch (error) {
         logger.error('清理上传会话失败:', error);
