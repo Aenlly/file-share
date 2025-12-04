@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>限流测试</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 20px;
+        }
+        .test-section {
+            margin: 20px 0;
+            padding: 20px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+        }
+        button {
+            padding: 10px 20px;
+            margin: 5px;
+            cursor: pointer;
+            background: #1890ff;
+            color: white;
+            border: none;
+            border-radius: 4px;
+        }
+        button:hover {
+            background: #40a9ff;
+        }
+        .log {
+            margin-top: 10px;
+            padding: 10px;
+            background: #f5f5f5;
+            border-radius: 4px;
+            max-height: 300px;
+            overflow-y: auto;
+        }
+        .log-item {
+            padding: 5px;
+            margin: 2px 0;
+            border-left: 3px solid #1890ff;
+            padding-left: 10px;
+        }
+        .log-item.error {
+            border-left-color: #ff4d4f;
+            color: #ff4d4f;
+        }
+        .log-item.success {
+            border-left-color: #52c41a;
+            color: #52c41a;
+        }
+    </style>
+</head>
+<body>
+    <h1>限流测试工具</h1>
+    
+    <div class="test-section">
+        <h2>测试1：快速连续请求（触发限流）</h2>
+        <p>1秒内发送10个请求到同一个接口，预期第6个开始返回429</p>
+        <button onclick="testRapidRequests()">开始测试</button>
+        <div id="log1" class="log"></div>
+    </div>
+    
+    <div class="test-section">
+        <h2>测试2：不同接口请求（不触发限流）</h2>
+        <p>1秒内发送10个请求到不同接口，预期全部成功</p>
+        <button onclick="testDifferentEndpoints()">开始测试</button>
+        <div id="log2" class="log"></div>
+    </div>
+    
+    <div class="test-section">
+        <h2>测试3：正常间隔请求（不触发限流）</h2>
+        <p>每隔1秒发送1个请求，共10次，预期全部成功</p>
+        <button onclick="testNormalRequests()">开始测试</button>
+        <div id="log3" class="log"></div>
+    </div>
+
+    <script>
+        const API_BASE = 'http://localhost:3000/api';
+        let token = localStorage.getItem('authToken') || '';
+
+        function log(logId, message, type = 'info') {
+            const logDiv = document.getElementById(logId);
+            const logItem = document.createElement('div');
+            logItem.className = `log-item ${type}`;
+            logItem.textContent = `[${new Date().toLocaleTimeString()}] ${message}`;
+            logDiv.appendChild(logItem);
+            logDiv.scrollTop = logDiv.scrollHeight;
+        }
+
+        function clearLog(logId) {
+            document.getElementById(logId).innerHTML = '';
+        }
+
+        async function makeRequest(endpoint) {
+            const response = await fetch(`${API_BASE}${endpoint}`, {
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json'
+                }
+            });
+            return { status: response.status, data: await response.json() };
+        }
+
+        async function testRapidRequests() {
+            clearLog('log1');
+            log('log1', '开始测试：快速连续请求');
+            
+            const promises = [];
+            for (let i = 1; i <= 10; i++) {
+                promises.push(
+                    makeRequest('/folders')
+                        .then(result => {
+                            if (result.status === 429) {
+                                log('log1', `请求 ${i}: 429 - 请求过于频繁，请稍后再试`, 'error');
+                            } else if (result.status === 200) {
+                                log('log1', `请求 ${i}: 200 - 成功`, 'success');
+                            } else {
+                                log('log1', `请求 ${i}: ${result.status} - ${JSON.stringify(result.data)}`, 'error');
+                            }
+                        })
+                        .catch(error => {
+                            log('log1', `请求 ${i}: 错误 - ${error.message}`, 'error');
+                        })
+                );
+            }
+            
+            await Promise.all(promises);
+            log('log1', '测试完成');
+        }
+
+        async function testDifferentEndpoints() {
+            clearLog('log2');
+            log('log2', '开始测试：不同接口请求');
+            
+            const endpoints = [
+                '/folders',
+                '/shares',
+                '/recycle',
+                '/users/storage',
+                '/folders',
+                '/shares',
+                '/recycle',
+                '/users/storage',
+                '/folders',
+                '/shares'
+            ];
+            
+            const promises = endpoints.map((endpoint, i) => 
+                makeRequest(endpoint)
+                    .then(result => {
+                        if (result.status === 429) {
+                            log('log2', `请求 ${i + 1} (${endpoint}): 429 - 请求过于频繁`, 'error');
+                        } else if (result.status === 200) {
+                            log('log2', `请求 ${i + 1} (${endpoint}): 200 - 成功`, 'success');
+                        } else {
+                            log('log2', `请求 ${i + 1} (${endpoint}): ${result.status}`, 'error');
+                        }
+                    })
+                    .catch(error => {
+                        log('log2', `请求 ${i + 1} (${endpoint}): 错误 - ${error.message}`, 'error');
+                    })
+            );
+            
+            await Promise.all(promises);
+            log('log2', '测试完成');
+        }
+
+        async function testNormalRequests() {
+            clearLog('log3');
+            log('log3', '开始测试：正常间隔请求');
+            
+            for (let i = 1; i <= 10; i++) {
+                try {
+                    const result = await makeRequest('/folders');
+                    if (result.status === 429) {
+                        log('log3', `请求 ${i}: 429 - 请求过于频繁`, 'error');
+                    } else if (result.status === 200) {
+                        log('log3', `请求 ${i}: 200 - 成功`, 'success');
+                    } else {
+                        log('log3', `请求 ${i}: ${result.status}`, 'error');
+                    }
+                } catch (error) {
+                    log('log3', `请求 ${i}: 错误 - ${error.message}`, 'error');
+                }
+                
+                if (i < 10) {
+                    await new Promise(resolve => setTimeout(resolve, 1000));
+                }
+            }
+            
+            log('log3', '测试完成');
+        }
+
+        // 页面加载时提示
+        window.onload = () => {
+            if (!token) {
+                alert('请先登录并设置 token。\n\n在浏览器控制台执行：\nlocalStorage.setItem("authToken", "your_token_here")');
+            }
+        };
+    </script>
+</body>
+</html>

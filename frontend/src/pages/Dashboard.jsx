@@ -347,7 +347,7 @@ const PersonalStats = ({ stats, navigate, formatFileSize, isMobile }) => {
               title="回收站"
               value={stats?.recycleBin || 0}
               prefix={<DeleteOutlined style={{ color: '#ff4d4f' }} />}
-              suffix="个待删除"
+              suffix="个"
             />
           </Card>
         </Col>
