@@ -277,8 +277,8 @@ router.delete('/:id', authenticate, requireAdmin, async (req, res, next) => {
         }
         logger.info(`删除文件夹: ${folders.length} 个`);
 
-        // 5. 删除用户根目录
-        const userRootPath = path.join(FILES_ROOT, user.username);
+        // 5. 删除用户根目录（使用 id-username 格式）
+        const userRootPath = path.join(FILES_ROOT, `${userId}-${user.username}`);
         if (await fs.pathExists(userRootPath)) {
             await fs.remove(userRootPath);
             logger.info(`删除用户根目录: ${userRootPath}`);
