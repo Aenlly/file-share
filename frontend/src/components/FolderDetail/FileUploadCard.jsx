@@ -5,8 +5,8 @@ import api from '../../utils/api'
 
 const { Dragger } = Upload
 
-// 默认分片大小 5MB
-const DEFAULT_CHUNK_SIZE = 5 * 1024 * 1024
+// 默认分片大小 20MB
+const DEFAULT_CHUNK_SIZE = 20 * 1024 * 1024
 
 const FileUploadCard = ({ folderId, onUploadSuccess, isMobile = false }) => {
   const [fileList, setFileList] = useState([])
@@ -33,7 +33,7 @@ const FileUploadCard = ({ folderId, onUploadSuccess, isMobile = false }) => {
 
   // 分片上传单个文件
   const uploadFileInChunks = async (file) => {
-    const CHUNK_SIZE = 200 * 1024
+    const CHUNK_SIZE = 20 * 1024 * 1024 // 20MB
     const totalChunks = Math.ceil(file.size / CHUNK_SIZE)
     
     try {
@@ -49,6 +49,7 @@ const FileUploadCard = ({ folderId, onUploadSuccess, isMobile = false }) => {
         }
       }
       
+      // 初始化分片上传
       const initResponse = await api.post(`/folders/${folderId}/chunk/init`, {
         fileName: fileName,
         fileSize: file.size
@@ -98,15 +99,20 @@ const FileUploadCard = ({ folderId, onUploadSuccess, isMobile = false }) => {
       return { success: true, fileName: file.name }
     } catch (error) {
       console.error('分片上传失败:', error)
+      
+      // 错误信息已经在拦截器中处理
+      const errorMessage = error.message
+      
       setUploadProgress(prev => ({
         ...prev,
         [file.uid]: { 
           ...prev[file.uid], 
           status: 'error',
-          error: error.message
+          error: errorMessage
         }
       }))
-      return { success: false, fileName: file.name, error: error.message }
+      
+      return { success: false, fileName: file.name, error: errorMessage, code: error.code }
     }
   }
 
@@ -141,17 +147,36 @@ const FileUploadCard = ({ folderId, onUploadSuccess, isMobile = false }) => {
         for (const file of fileList) {
           const result = await uploadFileInChunks(file)
           results.push(result)
+          
+          // 如果遇到存储配额错误，停止后续上传
+          if (!result.success && result.code === 'APF903') {
+            message.error(`存储空间不足，已停止上传。${result.error}`)
+            // 将剩余文件标记为跳过
+            const remainingFiles = fileList.slice(results.length)
+            remainingFiles.forEach(f => {
+              results.push({ success: false, fileName: f.name, error: '因存储空间不足而跳过', code: 'SKIPPED' })
+            })
+            break
+          }
         }
         
         const successCount = results.filter(r => r.success).length
         const errorCount = results.length - successCount
+        const quotaErrors = results.filter(r => r.code === 'APF903')
+        const fileTypeErrors = results.filter(r => r.code === 'APF603')
         
         if (successCount > 0) {
           message.success(`成功上传 ${successCount} 个文件`)
         }
         
+        // 显示具体的错误信息
         if (errorCount > 0) {
-          message.error(`${errorCount} 个文件上传失败`)
+          const errorFiles = results.filter(r => !r.success)
+          errorFiles.forEach(file => {
+            if (file.code !== 'APF903') { // 配额错误已经在上面显示
+              message.error(`${file.fileName}: ${file.error}`)
+            }
+          })
         }
         
         if (successCount > 0) {
@@ -202,7 +227,10 @@ const FileUploadCard = ({ folderId, onUploadSuccess, isMobile = false }) => {
         }
         
         if (errorFiles.length > 0) {
-          message.error(`${errorFiles.length} 个文件上传失败`)
+          // 显示每个失败文件的具体错误信息
+          errorFiles.forEach(file => {
+            message.error(`${file.filename}: ${file.error}`)
+          })
         }
         
         if (uploadedFiles.length > 0) {
@@ -226,7 +254,10 @@ const FileUploadCard = ({ folderId, onUploadSuccess, isMobile = false }) => {
         }
         
         if (errorFiles && errorFiles.length > 0) {
-          message.error(`${errorFiles.length} 个文件上传失败`)
+          // 显示每个失败文件的具体错误信息
+          errorFiles.forEach(file => {
+            message.error(`${file.filename}: ${file.error}`)
+          })
         }
         
         // 如果有文件上传成功，清空列表并刷新
@@ -239,8 +270,8 @@ const FileUploadCard = ({ folderId, onUploadSuccess, isMobile = false }) => {
           onUploadSuccess()
         }
       } else {
-        // 其他错误
-        message.error(error.response?.data?.error || '文件上传失败')
+        // 其他错误 - 错误信息已经在拦截器中处理
+        message.error(error.message || '文件上传失败')
       }
     } finally {
       setUploading(false)

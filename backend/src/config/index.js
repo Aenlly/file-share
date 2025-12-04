@@ -82,7 +82,7 @@ module.exports = {
     corsOrigin: process.env.CORS_ORIGIN || 'http://localhost:3001',
     
     // 分片上传配置
-    chunkSize: parseInt(process.env.CHUNK_SIZE) || 5 * 1024 * 1024, // 默认5MB
+    chunkSize: parseInt(process.env.CHUNK_SIZE) || 20 * 1024 * 1024, // 默认20MB
     
     // 缓存配置
     previewCacheMaxAge: 3600, // 1小时

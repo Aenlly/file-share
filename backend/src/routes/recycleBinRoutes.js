@@ -293,6 +293,9 @@ router.delete('/clear', authenticate, canAccessResource('recycle', 'delete'), as
         
         let deletedCount = 0;
         let errorCount = 0;
+        let totalSize = 0;
+
+        const UserModel = require('../models/UserModel');
 
         for (const file of files) {
             try {
@@ -305,6 +308,7 @@ router.delete('/clear', authenticate, canAccessResource('recycle', 'delete'), as
                 }
                 
                 await RecycleBinModel.delete(file.id);
+                totalSize += file.size || 0;
                 deletedCount++;
             } catch (error) {
                 logger.error(`删除文件失败: ${file.originalName}`, error);
@@ -312,7 +316,12 @@ router.delete('/clear', authenticate, canAccessResource('recycle', 'delete'), as
             }
         }
 
-        logger.info(`清空回收站: user=${req.user.username}, 成功=${deletedCount}, 失败=${errorCount}`);
+        // 减少用户存储使用量
+        if (totalSize > 0) {
+            await UserModel.decrementStorageUsed(req.user.username, totalSize);
+        }
+
+        logger.info(`清空回收站: user=${req.user.username}, 成功=${deletedCount}, 失败=${errorCount}, 释放空间=${totalSize}`);
         
         res.json({ 
             success: true, 
@@ -356,7 +365,11 @@ router.delete('/:fileId', authenticate, canAccessResource('recycle', 'delete'), 
         // 从回收站删除记录
         await RecycleBinModel.delete(fileId);
 
-        logger.info(`永久删除文件: ${recycleBinFile.originalName}`);
+        // 减少用户存储使用量
+        const UserModel = require('../models/UserModel');
+        await UserModel.decrementStorageUsed(recycleBinFile.owner, recycleBinFile.size);
+
+        logger.info(`永久删除文件: ${recycleBinFile.originalName}, size=${recycleBinFile.size}`);
         
         res.json({ success: true, message: '文件已永久删除' });
     } catch (error) {

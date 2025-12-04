@@ -45,10 +45,30 @@ router.post('/:folderId/chunk/init', authenticate, async (req, res, next) => {
             return sendError(res, 'AUTH_FORBIDDEN');
         }
 
+        // 检查存储配额
+        const UserModel = require('../models/UserModel');
+        const quotaCheck = await UserModel.checkStorageQuota(req.user.username, fileSize);
+        
+        if (!quotaCheck.allowed) {
+            const { formatStorageSize } = require('../utils/storageCalculator');
+            return sendError(res, 'STORAGE_QUOTA_EXCEEDED', 
+                `存储空间不足。可用: ${formatStorageSize(quotaCheck.storageAvailable)}, 需要: ${formatStorageSize(fileSize)}`
+            );
+        }
+
         const uploadId = `${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
         let originalName = fileName;
         if (originalName.startsWith('UTF8:')) {
             originalName = decodeFilename(originalName);
+        }
+
+        // 文件类型检查
+        const { validateFileType, sanitizeFilename } = require('../middleware/validation');
+        originalName = sanitizeFilename(originalName);
+        
+        const typeValidation = validateFileType(originalName, config);
+        if (!typeValidation.valid) {
+            return sendError(res, 'FILE_TYPE_NOT_ALLOWED', typeValidation.error);
         }
 
         // 创建上传会话（存储到数据库）
@@ -60,7 +80,7 @@ router.post('/:folderId/chunk/init', authenticate, async (req, res, next) => {
             owner: req.user.username
         });
 
-        logger.info(`初始化分片上传: uploadId=${uploadId}, fileName=${originalName}`);
+        logger.info(`初始化分片上传: uploadId=${uploadId}, fileName=${originalName}, fileSize=${fileSize}`);
         res.json({ uploadId, fileName: originalName });
     } catch (error) {
         next(error);
@@ -161,9 +181,13 @@ router.post('/:folderId/chunk/complete', authenticate, async (req, res, next) =>
             hash: fileHash
         });
 
+        // 更新用户存储使用量
+        const UserModel = require('../models/UserModel');
+        await UserModel.incrementStorageUsed(uploadInfo.owner, fileBuffer.length);
+
         // 标记会话为已完成并删除
         await UploadSessionModel.deleteSession(uploadId);
-        logger.info(`分片上传完成: ${uploadInfo.fileName}`);
+        logger.info(`分片上传完成: ${uploadInfo.fileName}, size=${fileBuffer.length}`);
 
         res.json({
             success: true,

@@ -33,11 +33,17 @@ class UserModel extends BaseModel {
         // 默认存储配额：10GB
         const defaultStorageQuota = 10 * 1024 * 1024 * 1024; // 10GB in bytes
 
+        // 根据角色分配权限
+        const { ROLE_PRESETS } = require('../config/permissions');
+        const role = userData.role || 'user';
+        const permissions = userData.permissions || ROLE_PRESETS[role] || ROLE_PRESETS.user;
+
         const newUser = await this.insert({
             username: userData.username,
             password: hashedPassword,
-            role: userData.role || 'user',
-            menuPermissions: userData.role === 'admin' 
+            role: role,
+            permissions: permissions,
+            menuPermissions: role === 'admin' 
                 ? ['manageUsers', 'viewFolders'] 
                 : ['viewFolders'],
             storageQuota: userData.storageQuota || defaultStorageQuota,
@@ -76,11 +82,13 @@ class UserModel extends BaseModel {
      * 更新用户角色
      */
     async updateRole(id, role) {
+        const { ROLE_PRESETS } = require('../config/permissions');
+        const permissions = ROLE_PRESETS[role] || ROLE_PRESETS.user;
         const menuPermissions = role === 'admin' 
             ? ['manageUsers', 'viewFolders'] 
             : ['viewFolders'];
 
-        return await this.update(id, { role, menuPermissions });
+        return await this.update(id, { role, permissions, menuPermissions });
     }
 
     /**
