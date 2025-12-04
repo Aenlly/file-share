@@ -1015,6 +1015,76 @@ router.get('/:folderId/download/:filename', authenticate, async (req, res, next)
 });
 
 /**
+ * 通过文件ID下载文件（更可靠的方式）
+ */
+router.get('/:folderId/download/by-id/:fileId', authenticate, async (req, res, next) => {
+    try {
+        const folderId = parseInt(req.params.folderId);
+        const fileId = parseInt(req.params.fileId);
+        
+        logger.info(`通过ID下载文件: folderId=${folderId}, fileId=${fileId}, user=${req.user.username}`);
+
+        const folder = await FolderModel.findById(folderId);
+        if (!folder) {
+            logger.warn(`文件夹不存在: folderId=${folderId}`);
+            return res.status(404).json({ 
+                success: false, 
+                code: 'FOLDER_NOT_FOUND',
+                error: '文件夹不存在' 
+            });
+        }
+
+        const hasAccess = await isFolderOwnedByUser(folderId, req.user.username);
+        if (!hasAccess) {
+            logger.warn(`用户 ${req.user.username} 无权访问文件夹 ${folderId}`);
+            return res.status(403).json({ 
+                success: false, 
+                code: 'FOLDER_FORBIDDEN',
+                error: '无权访问' 
+            });
+        }
+
+        // 通过ID查找文件
+        const fileRecord = await FileModel.findById(fileId);
+        
+        if (!fileRecord || fileRecord.folderId !== folderId) {
+            logger.warn(`文件不存在或不属于该文件夹: fileId=${fileId}, folderId=${folderId}`);
+            return res.status(404).json({ 
+                success: false, 
+                code: 'FILE_NOT_FOUND',
+                error: '文件不存在' 
+            });
+        }
+
+        const filePath = path.join(FILES_ROOT, folder.physicalPath, fileRecord.savedName);
+        logger.info(`文件路径: ${filePath}`);
+        
+        if (!await fs.pathExists(filePath)) {
+            logger.error(`物理文件不存在: ${filePath}`);
+            return res.status(404).json({ 
+                success: false, 
+                code: 'FILE_PHYSICAL_NOT_FOUND',
+                error: '文件不存在' 
+            });
+        }
+
+        logger.info(`开始下载: ${fileRecord.originalName} (${fileRecord.size} bytes)`);
+        
+        // 设置响应头，防止缓存
+        res.set({
+            'Cache-Control': 'no-cache, no-store, must-revalidate',
+            'Pragma': 'no-cache',
+            'Expires': '0'
+        });
+        
+        res.download(filePath, fileRecord.originalName);
+    } catch (error) {
+        logger.error(`通过ID下载文件失败:`, error);
+        next(error);
+    }
+});
+
+/**
  * 移动文件到另一个文件夹
  */
 router.post('/:folderId/move', authenticate, async (req, res, next) => {

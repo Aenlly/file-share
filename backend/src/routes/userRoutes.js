@@ -95,6 +95,55 @@ router.get('/me', authenticate, async (req, res, next) => {
 });
 
 /**
+ * 获取用户统计信息
+ */
+router.get('/stats', authenticate, async (req, res, next) => {
+    try {
+        const username = req.user.username;
+        
+        // 获取文件夹数量
+        const FolderModel = require('../models/FolderModel');
+        const folders = await FolderModel.findByOwner(username);
+        const folderCount = folders.length;
+        
+        // 获取文件数量和总大小
+        const FileModel = require('../models/FileModel');
+        const files = await FileModel.find({ owner: username });
+        const fileCount = files.length;
+        const totalSize = files.reduce((sum, file) => sum + (file.size || 0), 0);
+        
+        // 获取回收站数量
+        const RecycleBinModel = require('../models/RecycleBinModel');
+        const recycleBinFiles = await RecycleBinModel.findByOwner(username);
+        const recycleBinCount = recycleBinFiles.length;
+        
+        // 获取分享链接数量
+        const ShareModel = require('../models/ShareModel');
+        const shares = await ShareModel.find({ owner: username });
+        const shareCount = shares.length;
+        
+        // 获取活跃分享数量（未过期）
+        const now = new Date().toISOString();
+        const activeShares = shares.filter(share => share.expireTime > now);
+        const activeShareCount = activeShares.length;
+        
+        logger.info(`获取用户统计: ${username}`);
+        
+        res.json({
+            folders: folderCount,
+            files: fileCount,
+            totalSize,
+            recycleBin: recycleBinCount,
+            shares: shareCount,
+            activeShares: activeShareCount
+        });
+    } catch (error) {
+        logger.error(`获取用户统计失败:`, error);
+        next(error);
+    }
+});
+
+/**
  * 更新用户（仅管理员可更新其他用户）
  */
 router.put('/:id', authenticate, async (req, res, next) => {
@@ -172,16 +221,85 @@ router.delete('/:id', authenticate, requireAdmin, async (req, res, next) => {
             return res.status(404).json({ error: '用户不存在' });
         }
 
-        // 删除用户的分享链接
+        logger.info(`开始删除用户及其所有数据: ${user.username}`);
+
+        const fs = require('fs-extra');
+        const path = require('path');
+        const { FILES_ROOT } = require('../utils/fileHelpers');
+
+        // 1. 删除用户的分享链接
         const ShareModel = require('../models/ShareModel');
-        await ShareModel.deleteByOwner(user.username);
+        const deletedShares = await ShareModel.deleteByOwner(user.username);
+        logger.info(`删除分享链接: ${deletedShares} 个`);
 
-        // 删除用户
+        // 2. 删除用户的回收站数据
+        const RecycleBinModel = require('../models/RecycleBinModel');
+        const recycleBinFiles = await RecycleBinModel.findByOwner(user.username);
+        for (const file of recycleBinFiles) {
+            try {
+                await RecycleBinModel.permanentDelete(file.id, user.username);
+            } catch (error) {
+                logger.error(`删除回收站文件失败: ${file.originalName}`, error);
+            }
+        }
+        logger.info(`删除回收站数据: ${recycleBinFiles.length} 个`);
+
+        // 3. 删除用户的文件记录
+        const FileModel = require('../models/FileModel');
+        const files = await FileModel.find({ owner: user.username });
+        for (const file of files) {
+            try {
+                await FileModel.delete(file.id, user.username);
+            } catch (error) {
+                logger.error(`删除文件记录失败: ${file.originalName}`, error);
+            }
+        }
+        logger.info(`删除文件记录: ${files.length} 个`);
+
+        // 4. 删除用户的文件夹和物理文件
+        const FolderModel = require('../models/FolderModel');
+        const folders = await FolderModel.findByOwner(user.username);
+        
+        for (const folder of folders) {
+            try {
+                // 删除物理文件夹
+                const folderPath = path.join(FILES_ROOT, folder.physicalPath);
+                if (await fs.pathExists(folderPath)) {
+                    await fs.remove(folderPath);
+                    logger.info(`删除物理文件夹: ${folderPath}`);
+                }
+                
+                // 删除文件夹记录
+                await FolderModel.delete(folder.id, user.username);
+            } catch (error) {
+                logger.error(`删除文件夹失败: ${folder.alias}`, error);
+            }
+        }
+        logger.info(`删除文件夹: ${folders.length} 个`);
+
+        // 5. 删除用户根目录
+        const userRootPath = path.join(FILES_ROOT, user.username);
+        if (await fs.pathExists(userRootPath)) {
+            await fs.remove(userRootPath);
+            logger.info(`删除用户根目录: ${userRootPath}`);
+        }
+
+        // 6. 最后删除用户
         await UserModel.delete(userId);
-        logger.info(`删除用户: ${user.username}`);
+        logger.info(`删除用户完成: ${user.username}`);
 
-        res.json({ success: true, message: '用户删除成功' });
+        res.json({ 
+            success: true, 
+            message: '用户及其所有数据已删除',
+            details: {
+                shares: deletedShares,
+                recycleBin: recycleBinFiles.length,
+                files: files.length,
+                folders: folders.length
+            }
+        });
     } catch (error) {
+        logger.error(`删除用户失败:`, error);
         next(error);
     }
 });

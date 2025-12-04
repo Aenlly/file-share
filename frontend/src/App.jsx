@@ -3,6 +3,7 @@ import { useEffect } from 'react'
 import { useAuthStore } from './stores/authStore'
 import Login from './pages/Login'
 import Dashboard from './pages/Dashboard'
+import FolderManagement from './pages/FolderManagement'
 import FolderDetail from './pages/FolderDetail'
 import UserManagement from './pages/UserManagement'
 import ShareManagement from './pages/ShareManagement'
@@ -28,6 +29,7 @@ function App() {
         <Route path="/" element={isAuthenticated ? <Layout /> : <Navigate to="/login" />}>
           <Route index element={<Navigate to="/dashboard" />} />
           <Route path="dashboard" element={<Dashboard />} />
+          <Route path="folders" element={<FolderManagement />} />
           <Route path="folder/:id" element={<FolderDetail />} />
           <Route path="recycle-bin" element={<RecycleBin />} />
           <Route path="users" element={<UserManagement />} />

@@ -68,11 +68,7 @@ const Layout = () => {
   ]
 
   const handleMenuClick = ({ key }) => {
-    if (key === '/folders') {
-      navigate('/dashboard')
-    } else {
-      navigate(key)
-    }
+    navigate(key)
   }
 
   const handleLogout = () => {

@@ -1,329 +1,52 @@
 import { useState, useEffect } from 'react'
 import { 
   Card, 
-  Button, 
-  Table, 
-  Modal, 
-  Form, 
-  Input, 
-  message, 
-  Space, 
-  Popconfirm,
-  Tag,
-  Tooltip,
-  QRCode,
-  Typography
+  Row,
+  Col,
+  Statistic,
+  Typography,
+  Spin
 } from 'antd'
 import { 
-  PlusOutlined, 
-  ShareAltOutlined, 
+  FolderOutlined,
+  FileOutlined,
   DeleteOutlined,
-  FolderOpenOutlined,
-  CopyOutlined,
-  EyeOutlined
+  ShareAltOutlined,
+  DatabaseOutlined,
+  ClockCircleOutlined
 } from '@ant-design/icons'
 import { useNavigate } from 'react-router-dom'
-import { useQuery, useMutation, useQueryClient } from 'react-query'
-import dayjs from 'dayjs'
+import { useQuery } from 'react-query'
 import api from '../utils/api'
 import { useAuthStore } from '../stores/authStore'
 
-const { Title, Text } = Typography
+const { Title } = Typography
 
 const Dashboard = () => {
-  const [isModalVisible, setIsModalVisible] = useState(false)
-  const [isShareModalVisible, setIsShareModalVisible] = useState(false)
-  const [selectedFolder, setSelectedFolder] = useState(null)
-  const [shareInfo, setShareInfo] = useState(null)
-  const [form] = Form.useForm()
   const navigate = useNavigate()
-  const queryClient = useQueryClient()
-
-  // 获取文件夹列表（只显示顶级文件夹）
   const { user } = useAuthStore()
-  const { data: folders = [], isLoading } = useQuery(
-    ['folders', user?.username || 'anonymous'], // 使用用户特定的查询键
+
+  // 获取统计数据
+  const { data: stats, isLoading } = useQuery(
+    ['userStats', user?.username],
     async () => {
-      const response = await api.get('/folders')
-      // 只显示没有父文件夹的顶级文件夹
-      return response.data.filter(folder => !folder.parentId)
-    },
-    {
-      enabled: !!user // 只有用户登录时才执行查询
-    }
-  )
-
-  // 创建文件夹
-  const createFolderMutation = useMutation(
-    async (folderData) => {
-      const response = await api.post('/folders', folderData)
+      const response = await api.get('/users/stats')
       return response.data
     },
     {
-      onSuccess: () => {
-        message.success('文件夹创建成功')
-        setIsModalVisible(false)
-        form.resetFields()
-        queryClient.invalidateQueries(['folders', user?.username || 'anonymous'])
-      },
-      onError: (error) => {
-        message.error(error.response?.data?.error || '创建文件夹失败')
-      }
+      enabled: !!user,
+      refetchInterval: 30000 // 每30秒刷新一次
     }
   )
 
-  // 删除文件夹
-  const deleteFolderMutation = useMutation(
-    async (folderId) => {
-      await api.delete(`/folders/${folderId}`)
-    },
-    {
-      onSuccess: () => {
-        message.success('文件夹删除成功')
-        queryClient.invalidateQueries(['folders', user?.username || 'anonymous'])
-      },
-      onError: (error) => {
-        message.error(error.response?.data?.error || '删除文件夹失败')
-      }
-    }
-  )
-
-  // 创建分享
-  const createShareMutation = useMutation(
-    async (shareData) => {
-      const response = await api.post('/shares', shareData)
-      return response.data
-    },
-    {
-      onSuccess: (data) => {
-        // 自动复制分享链接到剪贴板
-        const baseUrl = import.meta.env.VITE_BASE_URL || window.location.origin
-        const shareUrl = `${baseUrl}/guest`
-        const accessCode = data.code
-        const shareText = `${shareUrl}?code=${accessCode}`
-        
-        // 使用多种方法尝试复制到剪贴板
-        const copyToClipboard = (text) => {
-          // 优先使用现代API
-          if (navigator.clipboard && navigator.clipboard.writeText) {
-            navigator.clipboard.writeText(text).then(
-              () => {
-                message.success('分享链接创建成功并已复制到剪贴板')
-                setShareInfo(data)
-                setIsShareModalVisible(true)
-              },
-              () => {
-                // 如果失败，尝试备用方法
-                fallbackCopyToClipboard(text)
-              }
-            )
-          } else {
-            // 使用备用方法
-            fallbackCopyToClipboard(text)
-          }
-        }
-        
-        // 备用复制方法
-        const fallbackCopyToClipboard = (text) => {
-          try {
-            // 创建临时文本区域
-            const textArea = document.createElement('textarea')
-            textArea.value = text
-            textArea.style.position = 'fixed'
-            textArea.style.left = '-999999px'
-            textArea.style.top = '-999999px'
-            document.body.appendChild(textArea)
-            textArea.focus()
-            textArea.select()
-            
-            const successful = document.execCommand('copy')
-            document.body.removeChild(textArea)
-            
-            if (successful) {
-              message.success('分享链接创建成功并已复制到剪贴板')
-              setShareInfo(data)
-              setIsShareModalVisible(true)
-            } else {
-              message.success('分享链接创建成功，但复制失败')
-              setShareInfo(data)
-              setIsShareModalVisible(true)
-            }
-          } catch (err) {
-            message.success('分享链接创建成功，但复制失败')
-            setShareInfo(data)
-            setIsShareModalVisible(true)
-          }
-        }
-        
-        // 执行复制
-        copyToClipboard(shareText)
-      },
-      onError: (error) => {
-        message.error(error.response?.data?.error || '创建分享失败')
-      }
-    }
-  )
-
-  const handleCreateFolder = () => {
-    form.validateFields().then(values => {
-      createFolderMutation.mutate(values)
-    })
+  // 格式化文件大小
+  const formatFileSize = (bytes) => {
+    if (!bytes || bytes === 0) return '0 B'
+    const k = 1024
+    const sizes = ['B', 'KB', 'MB', 'GB', 'TB']
+    const i = Math.floor(Math.log(bytes) / Math.log(k))
+    return Math.round((bytes / Math.pow(k, i)) * 100) / 100 + ' ' + sizes[i]
   }
-
-  const handleDeleteFolder = (folderId) => {
-    deleteFolderMutation.mutate(folderId)
-  }
-
-  const handleShareFolder = (folder) => {
-    setSelectedFolder(folder)
-    createShareMutation.mutate({ folderId: folder.id })
-  }
-
-  const handleCopyShareLink = () => {
-    if (shareInfo) {
-      // 使用配置的基础URL或当前origin
-      const baseUrl = import.meta.env.VITE_BASE_URL || window.location.origin
-      const shareUrl = `${baseUrl}/guest`
-      const accessCode = shareInfo.code
-      
-      // 复制可以直接在浏览器中访问的完整链接
-      const shareText = `${shareUrl}?code=${accessCode}`
-      
-      // 使用多种方法尝试复制到剪贴板
-      const copyToClipboard = (text) => {
-        // 优先使用现代API
-        if (navigator.clipboard && navigator.clipboard.writeText) {
-          navigator.clipboard.writeText(text).then(
-            () => {
-              message.success('分享链接已复制到剪贴板')
-            },
-            () => {
-              // 如果失败，尝试备用方法
-              fallbackCopyToClipboard(text)
-            }
-          )
-        } else {
-          // 使用备用方法
-          fallbackCopyToClipboard(text)
-        }
-      }
-      
-      // 备用复制方法
-      const fallbackCopyToClipboard = (text) => {
-        try {
-          // 创建临时文本区域
-          const textArea = document.createElement('textarea')
-          textArea.value = text
-          textArea.style.position = 'fixed'
-          textArea.style.left = '-999999px'
-          textArea.style.top = '-999999px'
-          document.body.appendChild(textArea)
-          textArea.focus()
-          textArea.select()
-          
-          const successful = document.execCommand('copy')
-          document.body.removeChild(textArea)
-          
-          if (successful) {
-            message.success('分享链接已复制到剪贴板')
-          } else {
-            message.error('复制失败，请手动复制链接')
-            // 显示链接供用户手动复制
-            Modal.info({
-              title: '分享链接',
-              content: (
-                <div>
-                  <p>请手动复制以下链接：</p>
-                  <Input.TextArea 
-                    value={shareText} 
-                    readOnly 
-                    style={{ marginTop: 8 }}
-                  />
-                </div>
-              ),
-              width: 500
-            })
-          }
-        } catch (err) {
-          message.error('复制失败，请手动复制链接')
-          // 显示链接供用户手动复制
-          Modal.info({
-            title: '分享链接',
-            content: (
-              <div>
-                <p>请手动复制以下链接：</p>
-                <Input.TextArea 
-                  value={shareText} 
-                  readOnly 
-                  style={{ marginTop: 8 }}
-                />
-              </div>
-            ),
-            width: 500
-          })
-        }
-      }
-      
-      copyToClipboard(shareText)
-    }
-  }
-
-  const columns = [
-    {
-      title: '文件夹名称',
-      dataIndex: 'alias',
-      key: 'alias',
-      render: (text) => (
-        <Space>
-          <FolderOpenOutlined style={{ color: '#1890ff' }} />
-          <span>{text}</span>
-        </Space>
-      )
-    },
-    {
-      title: '创建时间',
-      dataIndex: 'id',
-      key: 'createTime',
-      render: (id) => dayjs(id).format('YYYY-MM-DD HH:mm:ss')
-    },
-    {
-      title: '操作',
-      key: 'actions',
-      render: (_, record) => (
-        <Space>
-          <Tooltip title="查看文件夹">
-            <Button 
-              type="primary" 
-              icon={<EyeOutlined />} 
-              size="small"
-              onClick={() => navigate(`/folder/${record.id}`)}
-            />
-          </Tooltip>
-          <Tooltip title="分享文件夹">
-            <Button 
-              icon={<ShareAltOutlined />} 
-              size="small"
-              onClick={() => handleShareFolder(record)}
-            />
-          </Tooltip>
-          <Popconfirm
-            title="确定要删除这个文件夹吗?"
-            onConfirm={() => handleDeleteFolder(record.id)}
-            okText="确定"
-            cancelText="取消"
-          >
-            <Tooltip title="删除文件夹">
-              <Button 
-                danger 
-                icon={<DeleteOutlined />} 
-                size="small"
-              />
-            </Tooltip>
-          </Popconfirm>
-        </Space>
-      )
-    }
-  ]
 
   // 检测是否为移动设备
   const [isMobile, setIsMobile] = useState(false)
@@ -339,97 +62,124 @@ const Dashboard = () => {
     return () => window.removeEventListener('resize', checkMobile)
   }, [])
 
+  if (isLoading) {
+    return (
+      <div style={{ textAlign: 'center', padding: '100px 0' }}>
+        <Spin size="large" tip="加载统计数据中..." />
+      </div>
+    )
+  }
+
   return (
     <div>
-      <div style={{ 
-        display: 'flex', 
-        justifyContent: 'space-between', 
-        alignItems: 'center', 
-        marginBottom: 24,
-        flexDirection: isMobile ? 'column' : 'row',
-        gap: isMobile ? 16 : 0
-      }}>
-        <Title level={2} style={{ margin: 0 }}>文件夹管理</Title>
-        <Button 
-          type="primary" 
-          icon={<PlusOutlined />}
-          onClick={() => setIsModalVisible(true)}
-          block={isMobile}
-        >
-          新建文件夹
-        </Button>
-      </div>
+      <Title level={2} style={{ marginBottom: 24 }}>数据统计</Title>
 
-      <Card>
-        <Table 
-          columns={columns} 
-          dataSource={folders} 
-          rowKey="id"
-          loading={isLoading}
-          pagination={{ pageSize: 10 }}
-          scroll={{ x: isMobile ? 800 : undefined }}
-        />
-      </Card>
-
-      <Modal
-        title="新建文件夹"
-        open={isModalVisible}
-        onOk={handleCreateFolder}
-        onCancel={() => {
-          setIsModalVisible(false)
-          form.resetFields()
-        }}
-        confirmLoading={createFolderMutation.isLoading}
-      >
-        <Form form={form} layout="vertical">
-          <Form.Item
-            name="alias"
-            label="文件夹名称"
-            rules={[{ required: true, message: '请输入文件夹名称' }]}
+      <Row gutter={[16, 16]}>
+        {/* 文件夹统计 */}
+        <Col xs={24} sm={12} lg={8}>
+          <Card 
+            hoverable
+            onClick={() => navigate('/folders')}
+            style={{ cursor: 'pointer' }}
           >
-            <Input placeholder="请输入文件夹名称" />
-          </Form.Item>
-        </Form>
-      </Modal>
+            <Statistic
+              title="文件夹"
+              value={stats?.folders || 0}
+              prefix={<FolderOutlined style={{ color: '#1890ff' }} />}
+              suffix="个"
+            />
+          </Card>
+        </Col>
 
-      <Modal
-        title="文件夹分享"
-        open={isShareModalVisible}
-        onCancel={() => setIsShareModalVisible(false)}
-        footer={[
-          <Button key="copy" icon={<CopyOutlined />} onClick={handleCopyShareLink}>
-            复制链接
-          </Button>,
-          <Button key="close" onClick={() => setIsShareModalVisible(false)}>
-            关闭
-          </Button>
-        ]}
+        {/* 文件统计 */}
+        <Col xs={24} sm={12} lg={8}>
+          <Card hoverable>
+            <Statistic
+              title="文件"
+              value={stats?.files || 0}
+              prefix={<FileOutlined style={{ color: '#52c41a' }} />}
+              suffix="个"
+            />
+          </Card>
+        </Col>
+
+        {/* 存储空间统计 */}
+        <Col xs={24} sm={12} lg={8}>
+          <Card hoverable>
+            <Statistic
+              title="存储空间"
+              value={formatFileSize(stats?.totalSize || 0)}
+              prefix={<DatabaseOutlined style={{ color: '#722ed1' }} />}
+            />
+          </Card>
+        </Col>
+
+        {/* 回收站统计 */}
+        <Col xs={24} sm={12} lg={8}>
+          <Card 
+            hoverable
+            onClick={() => navigate('/recycle-bin')}
+            style={{ cursor: 'pointer' }}
+          >
+            <Statistic
+              title="回收站"
+              value={stats?.recycleBin || 0}
+              prefix={<DeleteOutlined style={{ color: '#ff4d4f' }} />}
+              suffix="个待删除"
+            />
+          </Card>
+        </Col>
+
+        {/* 分享链接统计 */}
+        <Col xs={24} sm={12} lg={8}>
+          <Card 
+            hoverable
+            onClick={() => navigate('/shares')}
+            style={{ cursor: 'pointer' }}
+          >
+            <Statistic
+              title="分享链接"
+              value={stats?.shares || 0}
+              prefix={<ShareAltOutlined style={{ color: '#fa8c16' }} />}
+              suffix="个"
+            />
+          </Card>
+        </Col>
+
+        {/* 活跃分享统计 */}
+        <Col xs={24} sm={12} lg={8}>
+          <Card 
+            hoverable
+            onClick={() => navigate('/shares')}
+            style={{ cursor: 'pointer' }}
+          >
+            <Statistic
+              title="活跃分享"
+              value={stats?.activeShares || 0}
+              prefix={<ClockCircleOutlined style={{ color: '#13c2c2' }} />}
+              suffix="个未过期"
+            />
+          </Card>
+        </Col>
+      </Row>
+
+      {/* 快捷操作提示 */}
+      <Card 
+        title="快捷操作" 
+        style={{ marginTop: 24 }}
+        bodyStyle={{ padding: isMobile ? 12 : 24 }}
       >
-        {shareInfo && (
-          <div style={{ textAlign: 'center' }}>
-            <div style={{ marginBottom: 16 }}>
-              <Text strong>访问链接:</Text>
+        <Row gutter={[16, 16]}>
+          <Col span={24}>
+            <div style={{ color: '#666', lineHeight: '2' }}>
+              <div>• 点击"文件夹"卡片可以查看和管理所有文件夹</div>
+              <div>• 点击"回收站"卡片可以查看和恢复已删除的文件</div>
+              <div>• 点击"分享链接"卡片可以管理所有分享链接</div>
+              <div>• 使用左侧菜单可以快速访问各个功能模块</div>
             </div>
-            <div className="share-url" style={{ marginBottom: 16, wordBreak: 'break-all' }}>
-              {window.location.origin}/guest
-            </div>
-            <div style={{ marginBottom: 16 }}>
-              <Text strong>访问码:</Text>
-            </div>
-            <div className="share-code">
-              {shareInfo.code}
-            </div>
-            <div style={{ margin: '16px 0' }}>
-              <QRCode value={`${window.location.origin}/guest`} />
-            </div>
-            <div>
-              <Text type="secondary">
-                有效期至: {dayjs(shareInfo.expireTime).format('YYYY-MM-DD HH:mm:ss')}
-              </Text>
-            </div>
-          </div>
-        )}
-      </Modal>
+          </Col>
+        </Row>
+      </Card>
     </div>
   )
 }

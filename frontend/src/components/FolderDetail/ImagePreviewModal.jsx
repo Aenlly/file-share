@@ -5,22 +5,24 @@ import api from '../../utils/api'
 const ImagePreviewModal = ({ visible, image, folderId, onClose }) => {
   const handleDownloadOriginal = async () => {
     try {
-      const downloadUrl = image.src.replace(/width=\d+&height=\d+/, 'width=1920&height=1080')
+      // 使用文件ID下载，更可靠
+      const downloadUrl = `/folders/${folderId}/download/by-id/${image.id}`
       
-      const response = await api.get(downloadUrl.replace('/api', ''), {
+      const response = await api.get(downloadUrl, {
         responseType: 'blob'
       })
       
       const blob = response.data
       const displayName = image.name
       
+      // 尝试使用现代文件保存API
       if ('showSaveFilePicker' in window) {
         try {
           const handle = await window.showSaveFilePicker({
             suggestedName: displayName,
             types: [{
               description: 'Images',
-              accept: { 'image/*': [] }
+              accept: { 'image/*': ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp'] }
             }]
           })
           const writable = await handle.createWritable()
@@ -33,23 +35,32 @@ const ImagePreviewModal = ({ visible, image, folderId, onClose }) => {
             message.info('已取消下载')
             return
           }
+          // 如果用户拒绝或出错，继续使用传统方法
         }
       }
       
+      // 传统下载方法
       const url = window.URL.createObjectURL(blob)
-      const newWindow = window.open(url, '_blank')
+      const link = document.createElement('a')
+      link.href = url
+      link.download = displayName
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
       
-      if (newWindow) {
-        setTimeout(() => window.URL.revokeObjectURL(url), 1000)
-        message.success('已在新窗口打开图片')
-      } else {
-        message.warning('请允许弹出窗口以下载文件')
-        window.URL.revokeObjectURL(url)
-      }
+      // 延迟释放URL
+      setTimeout(() => window.URL.revokeObjectURL(url), 100)
+      message.success('下载成功')
       
     } catch (error) {
       console.error('下载失败:', error)
-      message.error('下载失败')
+      if (error.response?.status === 404) {
+        message.error('文件不存在')
+      } else if (error.response?.status === 403) {
+        message.error('无权下载此文件')
+      } else {
+        message.error('下载失败，请重试')
+      }
     }
   }
 

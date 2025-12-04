@@ -19,6 +19,8 @@ export const useFileOperations = (folderId) => {
       visible: true,
       src: `/api/folders/${folderId}/preview/${encodeURIComponent(savedName)}?width=800&height=600`,
       name: displayName,
+      id: file.id,
+      savedName: savedName,
       loading: true
     })
     
@@ -104,12 +106,13 @@ export const useFileOperations = (folderId) => {
 
   const handleDownloadFile = async (file) => {
     try {
-      const savedName = file.savedName
       const displayName = file.name || file.originalName
+      const fileId = file.id
       
-      console.log('下载文件:', { savedName, displayName, file })
+      console.log('下载文件:', { fileId, displayName, file })
       
-      const response = await api.get(`/folders/${folderId}/download/${encodeURIComponent(savedName)}`, {
+      // 使用文件ID下载，更可靠
+      const response = await api.get(`/folders/${folderId}/download/by-id/${fileId}`, {
         responseType: 'blob'
       })
       
