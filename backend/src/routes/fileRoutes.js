@@ -9,10 +9,13 @@ const { uploadLimiter } = require('../middleware/rateLimiter');
 const { sanitizeFilename, validateFileType } = require('../middleware/validation');
 const logger = require('../utils/logger');
 const config = require('../config');
+const { scanFile } = require('../utils/fileScanner');
+const UserModel = require('../models/UserModel');
 const FolderModel = require('../models/FolderModel');
 const FileModel = require('../models/FileModel');
-const { FILES_ROOT, generateUniqueFilename, decodeFilename } = require('../utils/fileHelpers');
-const { isFolderOwnedByUser, calculateFileHash } = require('./helpers/fileHelpers');
+const { FILES_ROOT, generateUniqueFilename } = require('../utils/fileHelpers');
+const { normalizeFilename } = require('../utils/filenameEncoder');
+const { isFolderOwnedByUser, calculateFileHashSmart } = require('./helpers/fileHelpers');
 const { sendError } = require('../config/errorCodes');
 
 // 配置multer
@@ -72,6 +75,17 @@ router.post('/:folderId/upload', authenticate, uploadLimiter, upload.array('file
             return sendError(res, 'PARAM_INVALID', '没有上传文件');
         }
 
+        // 检查存储配额
+        const totalUploadSize = req.files.reduce((sum, file) => sum + file.size, 0);
+        const quotaCheck = await UserModel.checkStorageQuota(req.user.username, totalUploadSize);
+        
+        if (!quotaCheck.allowed) {
+            const { formatStorageSize } = require('../utils/storageCalculator');
+            return sendError(res, 'STORAGE_QUOTA_EXCEEDED', 
+                `存储空间不足。可用: ${formatStorageSize(quotaCheck.storageAvailable)}, 需要: ${formatStorageSize(totalUploadSize)}`
+            );
+        }
+
         const dirPath = path.join(FILES_ROOT, folder.physicalPath);
         const forceUpload = req.body.force === 'true';
         const uploadedFiles = [];
@@ -80,10 +94,8 @@ router.post('/:folderId/upload', authenticate, uploadLimiter, upload.array('file
 
         for (const file of req.files) {
             try {
-                let originalName = file.originalname;
-                if (originalName.startsWith('UTF8:')) {
-                    originalName = decodeFilename(originalName);
-                }
+                // 统一文件名处理
+                let originalName = normalizeFilename(file.originalname);
                 
                 // 文件名安全检查
                 originalName = sanitizeFilename(originalName);
@@ -98,8 +110,20 @@ router.post('/:folderId/upload', authenticate, uploadLimiter, upload.array('file
                     continue;
                 }
 
-                const fileHash = calculateFileHash(file.buffer);
-                logger.info(`文件哈希: ${originalName} -> ${fileHash}`);
+                // 文件安全扫描
+                const scanResult = await scanFile(file.buffer, originalName);
+                if (!scanResult.valid) {
+                    logger.warn(`文件安全扫描失败: ${originalName}`, scanResult);
+                    errorFiles.push({
+                        filename: originalName,
+                        error: `安全检查失败: ${scanResult.message}`
+                    });
+                    continue;
+                }
+
+                // 使用智能哈希计算（大文件使用流式处理）
+                const fileHash = await calculateFileHashSmart(file.buffer);
+                logger.info(`文件哈希: ${originalName} -> ${fileHash} (大小: ${file.size} 字节)`);
 
                 // 检查哈希是否已存在
                 const existingByHash = await FileModel.findByHash(fileHash, folderId);
@@ -168,6 +192,9 @@ router.post('/:folderId/upload', authenticate, uploadLimiter, upload.array('file
                 });
 
                 logger.info(`上传文件: ${originalName}`);
+                
+                // 更新用户存储使用量
+                await UserModel.incrementStorageUsed(req.user.username, file.size);
             } catch (error) {
                 errorFiles.push({
                     filename: file.originalname,
@@ -228,6 +255,9 @@ router.delete('/:folderId/file', authenticate, async (req, res, next) => {
         );
 
         logger.info(`移至回收站: ${result.deletedFiles.map(f => f.originalName).join(', ')}`);
+
+        // 注意：移至回收站不减少存储使用量，因为文件仍然存在
+        // 只有永久删除时才减少
 
         res.json({
             success: result.deletedFiles.length > 0,

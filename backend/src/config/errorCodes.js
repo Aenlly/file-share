@@ -75,6 +75,7 @@ const ERROR_CODES = {
     // ========== 系统限制 APF9xx ==========
     RATE_LIMIT_EXCEEDED: { code: 'APF901', message: '请求过于频繁，请稍后再试' },
     SYSTEM_BUSY: { code: 'APF902', message: '系统繁忙，请稍后重试' },
+    STORAGE_QUOTA_EXCEEDED: { code: 'APF903', message: '存储空间不足' },
 };
 
 /**

@@ -1,6 +1,7 @@
 const fs = require('fs-extra');
 const path = require('path');
 const BaseAdapter = require('./BaseAdapter');
+const lockManager = require('../../utils/LockManager');
 
 /**
  * JSON文件数据库适配器
@@ -10,7 +11,6 @@ class JsonAdapter extends BaseAdapter {
     constructor(config) {
         super();
         this.dataDir = config.dataDir || './data';
-        this.locks = new Map(); // 文件锁，防止并发写入
     }
 
     async connect() {
@@ -32,40 +32,14 @@ class JsonAdapter extends BaseAdapter {
     }
 
     /**
-     * 获取文件锁（带超时机制和重试）
+     * 获取文件锁（使用改进的锁管理器）
      */
     async _acquireLock(collection) {
-        const maxWaitTime = 30000; // 最多等待30秒
-        const checkInterval = 50; // 每50ms检查一次
-        const startTime = Date.now();
-        let waitCount = 0;
-        
-        while (this.locks.get(collection)) {
-            const elapsed = Date.now() - startTime;
-            
-            if (elapsed > maxWaitTime) {
-                const errorMsg = `数据库繁忙，请稍后重试（等待时间: ${Math.round(elapsed/1000)}秒）`;
-                console.error(`获取文件锁超时: ${collection}, 等待次数: ${waitCount}`);
-                throw new Error(errorMsg);
-            }
-            
-            // 每秒记录一次等待日志
-            if (waitCount % 20 === 0 && waitCount > 0) {
-                console.warn(`等待数据库锁: ${collection}, 已等待 ${Math.round(elapsed/1000)} 秒`);
-            }
-            
-            await new Promise(resolve => setTimeout(resolve, checkInterval));
-            waitCount++;
-        }
-        
-        // 成功获取锁
-        this.locks.set(collection, {
-            acquired: Date.now(),
-            collection: collection
-        });
-        
-        if (waitCount > 0) {
-            console.info(`获取数据库锁成功: ${collection}, 等待了 ${waitCount * checkInterval}ms`);
+        try {
+            await lockManager.acquire(collection, 30000, 60000);
+        } catch (error) {
+            console.error(`获取文件锁失败: ${collection}`, error.message);
+            throw new Error(`数据库繁忙，请稍后重试`);
         }
     }
 
@@ -73,14 +47,7 @@ class JsonAdapter extends BaseAdapter {
      * 释放文件锁
      */
     _releaseLock(collection) {
-        const lockInfo = this.locks.get(collection);
-        if (lockInfo) {
-            const holdTime = Date.now() - lockInfo.acquired;
-            if (holdTime > 1000) {
-                console.warn(`释放数据库锁: ${collection}, 持有时间: ${holdTime}ms`);
-            }
-        }
-        this.locks.delete(collection);
+        lockManager.release(collection);
     }
 
     /**

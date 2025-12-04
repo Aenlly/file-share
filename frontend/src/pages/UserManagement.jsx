@@ -10,14 +10,15 @@ import {
   message, 
   Space,
   Tag,
-  Tabs,
-  Popconfirm
+  Popconfirm,
+  InputNumber
 } from 'antd'
 import { 
   PlusOutlined, 
   EditOutlined, 
   DeleteOutlined,
-  KeyOutlined
+  KeyOutlined,
+  DatabaseOutlined
 } from '@ant-design/icons'
 import { useQuery, useMutation, useQueryClient } from 'react-query'
 import { useAuthStore } from '../stores/authStore'
@@ -28,10 +29,12 @@ const { Option } = Select
 const UserManagement = () => {
   const [isModalVisible, setIsModalVisible] = useState(false)
   const [isPasswordModalVisible, setIsPasswordModalVisible] = useState(false)
+  const [isStorageModalVisible, setIsStorageModalVisible] = useState(false)
   const [editingUser, setEditingUser] = useState(null)
   const [isMobile, setIsMobile] = useState(false)
   const [form] = Form.useForm()
   const [passwordForm] = Form.useForm()
+  const [storageForm] = Form.useForm()
   const queryClient = useQueryClient()
   const { user: currentUser } = useAuthStore()
 
@@ -53,6 +56,18 @@ const UserManagement = () => {
     async () => {
       const response = await api.get('/users')
       return response.data
+    }
+  )
+
+  // 获取用户统计信息（包含存储使用量）
+  const { data: userStats } = useQuery(
+    'userStatsAll',
+    async () => {
+      const response = await api.get('/users/stats-all')
+      return response.data
+    },
+    {
+      refetchInterval: 30000 // 每30秒刷新
     }
   )
 
@@ -131,6 +146,27 @@ const UserManagement = () => {
     }
   )
 
+  // 更新存储配额
+  const updateStorageQuotaMutation = useMutation(
+    async ({ id, storageQuota }) => {
+      const response = await api.put(`/users/${id}/storage-quota`, { storageQuota })
+      return response.data
+    },
+    {
+      onSuccess: () => {
+        message.success('存储配额更新成功')
+        setIsStorageModalVisible(false)
+        setEditingUser(null)
+        storageForm.resetFields()
+        queryClient.invalidateQueries('users')
+        queryClient.invalidateQueries('userStatsAll')
+      },
+      onError: (error) => {
+        message.error(error.response?.data?.error || '更新存储配额失败')
+      }
+    }
+  )
+
   const handleCreateUser = () => {
     form.validateFields().then(values => {
       if (editingUser) {
@@ -166,17 +202,42 @@ const UserManagement = () => {
     })
   }
 
-  const handleDeleteUser = (user) => {
-    Modal.confirm({
-      title: '确认删除',
-      content: `确定要删除用户 "${user.username}" 吗？此操作将同时删除该用户的所有文件夹和分享链接，且不可恢复。`,
-      okText: '确定',
-      cancelText: '取消',
-      okType: 'danger',
-      onOk: () => {
-        deleteUserMutation.mutate(user.id)
-      }
+  const handleChangeStorageQuota = (user) => {
+    setEditingUser(user)
+    const quotaGB = user.storageQuota ? (user.storageQuota / (1024 * 1024 * 1024)).toFixed(2) : 10
+    const storageInfo = getUserStorageInfo(user.id)
+    storageForm.setFieldsValue({ 
+      storageQuota: parseFloat(quotaGB),
+      currentUsed: storageInfo?.storageUsed || 0
     })
+    setIsStorageModalVisible(true)
+  }
+
+  const handleStorageQuotaSubmit = () => {
+    storageForm.validateFields().then(values => {
+      // 将GB转换为字节
+      const storageQuotaBytes = values.storageQuota * 1024 * 1024 * 1024
+      updateStorageQuotaMutation.mutate({ 
+        id: editingUser.id, 
+        storageQuota: storageQuotaBytes 
+      })
+    })
+  }
+
+  // 格式化存储大小显示
+  const formatStorageSize = (bytes) => {
+    if (bytes === null || bytes === undefined) return '0 B'
+    if (bytes === 0) return '0 B'
+    const k = 1024
+    const sizes = ['B', 'KB', 'MB', 'GB', 'TB']
+    const i = Math.floor(Math.log(bytes) / Math.log(k))
+    return Math.round((bytes / Math.pow(k, i)) * 100) / 100 + ' ' + sizes[i]
+  }
+
+  // 获取用户的存储使用信息
+  const getUserStorageInfo = (userId) => {
+    const userStat = userStats?.users?.find(u => u.userId === userId)
+    return userStat || null
   }
 
   const columns = [
@@ -204,12 +265,40 @@ const UserManagement = () => {
       )
     },
     {
+      title: '存储配额',
+      dataIndex: 'storageQuota',
+      key: 'storageQuota',
+      width: isMobile ? 100 : 120,
+      render: (quota) => formatStorageSize(quota)
+    },
+    {
+      title: '存储使用',
+      key: 'storageUsed',
+      width: isMobile ? 120 : 150,
+      render: (_, record) => {
+        const storageInfo = getUserStorageInfo(record.id)
+        if (!storageInfo) return '-'
+        
+        const used = storageInfo.storageUsed || 0
+        const quota = record.storageQuota || 10 * 1024 * 1024 * 1024
+        const percentage = ((used / quota) * 100).toFixed(1)
+        const color = percentage > 90 ? '#ff4d4f' : percentage > 70 ? '#faad14' : '#52c41a'
+        
+        return (
+          <div>
+            <div style={{ color }}>{formatStorageSize(used)}</div>
+            <div style={{ fontSize: '11px', color }}>({percentage}%)</div>
+          </div>
+        )
+      }
+    },
+    {
       title: '操作',
       key: 'actions',
       fixed: isMobile ? 'right' : false,
-      width: isMobile ? 120 : 300,
+      width: isMobile ? 140 : 380,
       render: (_, record) => (
-        <Space direction={isMobile ? 'vertical' : 'horizontal'} size="small">
+        <Space direction={isMobile ? 'vertical' : 'horizontal'} size="small" wrap>
           <Button 
             type="primary" 
             icon={<EditOutlined />}
@@ -217,7 +306,7 @@ const UserManagement = () => {
             onClick={() => handleOpenModal(record)}
             block={isMobile}
           >
-            {isMobile ? '编辑' : '编辑'}
+            编辑
           </Button>
           <Button 
             icon={<KeyOutlined />}
@@ -225,7 +314,15 @@ const UserManagement = () => {
             onClick={() => handleChangePassword(record)}
             block={isMobile}
           >
-            {isMobile ? '密码' : '修改密码'}
+            密码
+          </Button>
+          <Button 
+            icon={<DatabaseOutlined />}
+            size="small"
+            onClick={() => handleChangeStorageQuota(record)}
+            block={isMobile}
+          >
+            配额
           </Button>
           {record.id !== currentUser?.id && (
             <Popconfirm
@@ -376,6 +473,54 @@ const UserManagement = () => {
         </Form>
       </Modal>
 
+      <Modal
+        title="修改存储配额"
+        open={isStorageModalVisible}
+        onOk={handleStorageQuotaSubmit}
+        onCancel={() => {
+          setIsStorageModalVisible(false)
+          setEditingUser(null)
+          storageForm.resetFields()
+        }}
+        confirmLoading={updateStorageQuotaMutation.isLoading}
+      >
+        <Form form={storageForm} layout="vertical">
+          <Form.Item
+            label="用户名"
+          >
+            <Input value={editingUser?.username} disabled />
+          </Form.Item>
+          <Form.Item
+            name="storageQuota"
+            label="存储配额 (GB)"
+            rules={[
+              { required: true, message: '请输入存储配额' },
+              { type: 'number', min: 0.1, message: '存储配额必须大于0.1GB' }
+            ]}
+            extra="当前配额将立即生效，建议根据用户实际需求合理分配"
+          >
+            <InputNumber 
+              style={{ width: '100%' }}
+              placeholder="请输入存储配额（单位：GB）"
+              min={0.1}
+              max={10000}
+              step={1}
+              precision={2}
+            />
+          </Form.Item>
+          <Form.Item label="当前使用情况">
+            <div style={{ color: '#666', lineHeight: '1.8' }}>
+              <div>当前配额: {formatStorageSize(editingUser?.storageQuota)}</div>
+              <div>已使用: {formatStorageSize(storageForm.getFieldValue('currentUsed') || 0)}</div>
+              <div style={{ 
+                color: ((storageForm.getFieldValue('currentUsed') || 0) / (editingUser?.storageQuota || 1)) > 0.9 ? '#ff4d4f' : '#52c41a' 
+              }}>
+                使用率: {(((storageForm.getFieldValue('currentUsed') || 0) / (editingUser?.storageQuota || 1)) * 100).toFixed(1)}%
+              </div>
+            </div>
+          </Form.Item>
+        </Form>
+      </Modal>
 
     </div>
   )

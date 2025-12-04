@@ -9,11 +9,10 @@ const config = require('../config');
 const FolderModel = require('../models/FolderModel');
 const FileModel = require('../models/FileModel');
 const { FILES_ROOT, generateUniqueFilename, decodeFilename } = require('../utils/fileHelpers');
-const { isFolderOwnedByUser, calculateFileHash } = require('./helpers/fileHelpers');
+const { isFolderOwnedByUser, calculateFileHashSmart } = require('./helpers/fileHelpers');
 const { sendError } = require('../config/errorCodes');
 
-// 存储分片上传的临时数据
-const chunkUploads = new Map();
+const UploadSessionModel = require('../models/UploadSessionModel');
 
 /**
  * 获取上传配置（分片大小等）
@@ -52,13 +51,13 @@ router.post('/:folderId/chunk/init', authenticate, async (req, res, next) => {
             originalName = decodeFilename(originalName);
         }
 
-        chunkUploads.set(uploadId, {
+        // 创建上传会话（存储到数据库）
+        await UploadSessionModel.createSession({
+            uploadId,
             folderId,
             fileName: originalName,
             fileSize,
-            chunks: [],
-            owner: req.user.username,
-            createdAt: Date.now()
+            owner: req.user.username
         });
 
         logger.info(`初始化分片上传: uploadId=${uploadId}, fileName=${originalName}`);
@@ -80,7 +79,7 @@ router.post('/:folderId/chunk', authenticate, async (req, res, next) => {
             return sendError(res, 'PARAM_MISSING');
         }
 
-        const uploadInfo = chunkUploads.get(uploadId);
+        const uploadInfo = await UploadSessionModel.findByUploadId(uploadId);
         if (!uploadInfo) {
             return sendError(res, 'RESOURCE_NOT_FOUND', '上传会话不存在或已过期');
         }
@@ -90,7 +89,9 @@ router.post('/:folderId/chunk', authenticate, async (req, res, next) => {
         }
 
         const chunkBuffer = Buffer.from(chunk, 'base64');
-        uploadInfo.chunks[chunkIndex] = chunkBuffer;
+        
+        // 更新会话的分片数据
+        await UploadSessionModel.updateChunks(uploadId, chunkIndex, chunk);
 
         logger.info(`接收分片: uploadId=${uploadId}, chunkIndex=${chunkIndex}`);
         res.json({ success: true, chunkIndex });
@@ -111,7 +112,7 @@ router.post('/:folderId/chunk/complete', authenticate, async (req, res, next) =>
             return sendError(res, 'PARAM_MISSING', '缺少uploadId');
         }
 
-        const uploadInfo = chunkUploads.get(uploadId);
+        const uploadInfo = await UploadSessionModel.findByUploadId(uploadId);
         if (!uploadInfo) {
             return sendError(res, 'RESOURCE_NOT_FOUND', '上传会话不存在或已过期');
         }
@@ -122,16 +123,19 @@ router.post('/:folderId/chunk/complete', authenticate, async (req, res, next) =>
 
         const folder = await FolderModel.findById(folderId);
         if (!folder) {
-            chunkUploads.delete(uploadId);
+            await UploadSessionModel.deleteSession(uploadId);
             return sendError(res, 'FOLDER_NOT_FOUND');
         }
 
-        const fileBuffer = Buffer.concat(uploadInfo.chunks);
-        const fileHash = calculateFileHash(fileBuffer);
+        // 重建文件 Buffer
+        const chunkBuffers = uploadInfo.chunks.map(chunk => Buffer.from(chunk, 'base64'));
+        const fileBuffer = Buffer.concat(chunkBuffers);
+        // 使用智能哈希计算（大文件使用流式处理）
+        const fileHash = await calculateFileHashSmart(fileBuffer);
         
         const existingByHash = await FileModel.findByHash(fileHash, folderId);
         if (existingByHash) {
-            chunkUploads.delete(uploadId);
+            await UploadSessionModel.deleteSession(uploadId);
             return res.status(200).json({ 
                 success: false,
                 code: 'FILE_ALREADY_EXISTS',
@@ -157,7 +161,8 @@ router.post('/:folderId/chunk/complete', authenticate, async (req, res, next) =>
             hash: fileHash
         });
 
-        chunkUploads.delete(uploadId);
+        // 标记会话为已完成并删除
+        await UploadSessionModel.deleteSession(uploadId);
         logger.info(`分片上传完成: ${uploadInfo.fileName}`);
 
         res.json({
@@ -171,22 +176,21 @@ router.post('/:folderId/chunk/complete', authenticate, async (req, res, next) =>
         });
     } catch (error) {
         if (req.body.uploadId) {
-            chunkUploads.delete(req.body.uploadId);
+            await UploadSessionModel.deleteSession(req.body.uploadId).catch(() => {});
         }
         next(error);
     }
 });
 
-// 定期清理过期的分片上传会话（超过1小时）
-setInterval(() => {
-    const now = Date.now();
-    const oneHour = 60 * 60 * 1000;
-    
-    for (const [uploadId, uploadInfo] of chunkUploads.entries()) {
-        if (now - uploadInfo.createdAt > oneHour) {
-            chunkUploads.delete(uploadId);
-            logger.info(`清理过期的分片上传会话: ${uploadId}`);
+// 定期清理过期的分片上传会话（每10分钟）
+setInterval(async () => {
+    try {
+        const cleanedCount = await UploadSessionModel.cleanExpiredSessions();
+        if (cleanedCount > 0) {
+            logger.info(`清理过期的分片上传会话: ${cleanedCount} 个`);
         }
+    } catch (error) {
+        logger.error('清理上传会话失败:', error);
     }
 }, 10 * 60 * 1000);
 

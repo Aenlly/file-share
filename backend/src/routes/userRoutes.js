@@ -194,6 +194,8 @@ router.get('/stats-all', authenticate, requireAdmin, async (req, res, next) => {
                 folders: folders.length,
                 files: files.length,
                 totalSize: totalSize,
+                storageQuota: user.storageQuota || 10 * 1024 * 1024 * 1024,
+                storageUsed: totalSize,
                 recycleBin: recycleBinFiles.length,
                 shares: shares.length,
                 activeShares: activeShareCount
@@ -206,6 +208,8 @@ router.get('/stats-all', authenticate, requireAdmin, async (req, res, next) => {
             totalFolders: allStats.reduce((sum, s) => sum + s.folders, 0),
             totalFiles: allStats.reduce((sum, s) => sum + s.files, 0),
             totalSize: allStats.reduce((sum, s) => sum + s.totalSize, 0),
+            totalStorageQuota: allStats.reduce((sum, s) => sum + s.storageQuota, 0),
+            totalStorageUsed: allStats.reduce((sum, s) => sum + s.storageUsed, 0),
             totalShares: allStats.reduce((sum, s) => sum + s.shares, 0),
             totalActiveShares: allStats.reduce((sum, s) => sum + s.activeShares, 0),
         };
@@ -379,6 +383,109 @@ router.delete('/:id', authenticate, requireAdmin, async (req, res, next) => {
         });
     } catch (error) {
         logger.error(`删除用户失败:`, error);
+        next(error);
+    }
+});
+
+/**
+ * 获取用户存储信息
+ */
+router.get('/storage/:username', authenticate, async (req, res, next) => {
+    try {
+        const { username } = req.params;
+        
+        // 只能查看自己的存储信息，或管理员可以查看所有人
+        if (req.user.username !== username && req.user.role !== 'admin') {
+            return sendError(res, 'AUTH_FORBIDDEN');
+        }
+
+        const { calculateUserStorage, formatStorageSize } = require('../utils/storageCalculator');
+        
+        const user = await UserModel.findByUsername(username);
+        if (!user) {
+            return sendError(res, 'USER_NOT_FOUND');
+        }
+
+        const storageInfo = await calculateUserStorage(username);
+        
+        res.json({
+            username,
+            storageQuota: user.storageQuota || 10 * 1024 * 1024 * 1024,
+            storageUsed: storageInfo.totalStorage,
+            storageAvailable: (user.storageQuota || 10 * 1024 * 1024 * 1024) - storageInfo.totalStorage,
+            folderStorage: storageInfo.folderStorage,
+            recycleBinStorage: storageInfo.recycleBinStorage,
+            fileCount: storageInfo.fileCount,
+            recycleBinCount: storageInfo.recycleBinCount,
+            formatted: {
+                quota: formatStorageSize(user.storageQuota || 10 * 1024 * 1024 * 1024),
+                used: formatStorageSize(storageInfo.totalStorage),
+                available: formatStorageSize((user.storageQuota || 10 * 1024 * 1024 * 1024) - storageInfo.totalStorage),
+                folderStorage: formatStorageSize(storageInfo.folderStorage),
+                recycleBinStorage: formatStorageSize(storageInfo.recycleBinStorage)
+            }
+        });
+    } catch (error) {
+        next(error);
+    }
+});
+
+/**
+ * 更新用户存储配额（仅管理员）
+ */
+router.put('/:id/storage-quota', authenticate, requireAdmin, async (req, res, next) => {
+    try {
+        const { id } = req.params;
+        const { storageQuota } = req.body;
+
+        if (!storageQuota || storageQuota <= 0) {
+            return sendError(res, 'PARAM_INVALID', '存储配额必须大于0');
+        }
+
+        const { parseStorageSize } = require('../utils/storageCalculator');
+        
+        // 支持字符串格式（如 "10GB"）或数字（字节）
+        const quotaBytes = typeof storageQuota === 'string' 
+            ? parseStorageSize(storageQuota) 
+            : storageQuota;
+
+        await UserModel.updateStorageQuota(parseInt(id), quotaBytes);
+        
+        const user = await UserModel.findById(parseInt(id));
+        logger.info(`更新用户存储配额: ${user.username}, 新配额: ${quotaBytes} 字节`);
+
+        res.json({
+            success: true,
+            message: '存储配额更新成功',
+            user: {
+                id: user.id,
+                username: user.username,
+                storageQuota: quotaBytes
+            }
+        });
+    } catch (error) {
+        next(error);
+    }
+});
+
+/**
+ * 重新计算用户存储使用量
+ */
+router.post('/storage/:username/recalculate', authenticate, requireAdmin, async (req, res, next) => {
+    try {
+        const { username } = req.params;
+        
+        const { updateUserStorageUsage } = require('../utils/storageCalculator');
+        const storageInfo = await updateUserStorageUsage(username);
+        
+        logger.info(`重新计算用户存储: ${username}`);
+        
+        res.json({
+            success: true,
+            message: '存储使用量已重新计算',
+            storage: storageInfo
+        });
+    } catch (error) {
         next(error);
     }
 });

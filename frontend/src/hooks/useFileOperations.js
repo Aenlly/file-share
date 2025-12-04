@@ -39,7 +39,9 @@ export const useFileOperations = (folderId) => {
         }
       }
       
-      const previewUrl = `http://localhost:3000/api/folders/${folderId}/preview/${encodeURIComponent(savedName)}?width=800&height=600`
+      // 使用环境变量或当前域名构建完整URL
+      const API_URL = import.meta.env.VITE_API_URL || window.location.origin
+      const previewUrl = `${API_URL}/api/folders/${folderId}/preview/${encodeURIComponent(savedName)}?width=800&height=600`
       console.log('预览URL:', previewUrl)
       
       const response = await fetch(previewUrl, { headers })
@@ -47,12 +49,12 @@ export const useFileOperations = (folderId) => {
       if (!response.ok) {
         if (response.status === 400 || response.status === 404) {
           console.log('使用savedName失败，尝试使用原始文件名')
-          const fallbackUrl = `http://localhost:3000/api/folders/${folderId}/preview/${encodeURIComponent(displayName)}?width=800&height=600`
+          const fallbackUrl = `${API_URL}/api/folders/${folderId}/preview/${encodeURIComponent(displayName)}?width=800&height=600`
           
           const fallbackResponse = await fetch(fallbackUrl, { headers })
           
           if (!fallbackResponse.ok) {
-            const idFallbackUrl = `http://localhost:3000/api/folders/${folderId}/preview/by-id/${file.id}?width=800&height=600`
+            const idFallbackUrl = `${API_URL}/api/folders/${folderId}/preview/by-id/${file.id}?width=800&height=600`
             
             try {
               const idFallbackResponse = await fetch(idFallbackUrl, { headers })

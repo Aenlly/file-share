@@ -11,19 +11,59 @@ const logger = require('./logger');
  */
 function checkJwtSecret() {
     const defaultSecret = 'dev-secret-key-change-in-production';
+    const weakSecrets = [
+        'secret', 'password', '123456', 'admin', 'test',
+        'dev-secret', 'jwt-secret', 'your-secret-key'
+    ];
     
     if (!config.jwtSecret) {
         logger.error('❌ JWT_SECRET 未配置！');
         throw new Error('JWT_SECRET 环境变量未设置，应用无法启动');
     }
     
-    if (config.nodeEnv === 'production' && config.jwtSecret === defaultSecret) {
-        logger.error('❌ 生产环境使用了默认的 JWT_SECRET！');
-        throw new Error('生产环境必须设置自定义的 JWT_SECRET，不能使用默认值');
-    }
-    
-    if (config.jwtSecret.length < 32) {
-        logger.warn('⚠️  JWT_SECRET 长度过短，建议至少32个字符');
+    // 生产环境严格检查
+    if (config.nodeEnv === 'production') {
+        // 不能使用默认密钥
+        if (config.jwtSecret === defaultSecret) {
+            logger.error('❌ 生产环境使用了默认的 JWT_SECRET！');
+            throw new Error('生产环境必须设置自定义的 JWT_SECRET，不能使用默认值');
+        }
+        
+        // 长度必须至少64个字符
+        if (config.jwtSecret.length < 64) {
+            logger.error('❌ 生产环境 JWT_SECRET 长度不足！');
+            throw new Error('生产环境 JWT_SECRET 长度必须至少64个字符');
+        }
+        
+        // 不能使用常见弱密钥
+        const lowerSecret = config.jwtSecret.toLowerCase();
+        for (const weak of weakSecrets) {
+            if (lowerSecret.includes(weak)) {
+                logger.error('❌ JWT_SECRET 包含常见弱密钥！');
+                throw new Error('JWT_SECRET 不能包含常见弱密钥，请使用强随机字符串');
+            }
+        }
+        
+        // 检查密钥复杂度（至少包含大小写字母和数字）
+        const hasLower = /[a-z]/.test(config.jwtSecret);
+        const hasUpper = /[A-Z]/.test(config.jwtSecret);
+        const hasNumber = /[0-9]/.test(config.jwtSecret);
+        const hasSpecial = /[^a-zA-Z0-9]/.test(config.jwtSecret);
+        
+        const complexity = [hasLower, hasUpper, hasNumber, hasSpecial].filter(Boolean).length;
+        if (complexity < 3) {
+            logger.error('❌ JWT_SECRET 复杂度不足！');
+            throw new Error('JWT_SECRET 必须包含大小写字母、数字和特殊字符中的至少3种');
+        }
+    } else {
+        // 开发环境警告
+        if (config.jwtSecret.length < 32) {
+            logger.warn('⚠️  JWT_SECRET 长度过短，建议至少32个字符');
+        }
+        
+        if (config.jwtSecret === defaultSecret) {
+            logger.warn('⚠️  使用默认 JWT_SECRET，生产环境请务必修改');
+        }
     }
     
     logger.info('✅ JWT Secret 配置检查通过');

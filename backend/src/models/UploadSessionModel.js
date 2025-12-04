@@ -1,14 +1,12 @@
 const BaseModel = require('./BaseModel');
-const path = require('path');
-const fs = require('fs-extra');
 
 /**
  * 上传会话模型
- * 用于管理分片上传和断点续传
+ * 用于存储分片上传的会话信息
  */
 class UploadSessionModel extends BaseModel {
     constructor() {
-        super('upload_sessions');
+        super('uploadSessions');
     }
 
     /**
@@ -20,15 +18,14 @@ class UploadSessionModel extends BaseModel {
             folderId: sessionData.folderId,
             fileName: sessionData.fileName,
             fileSize: sessionData.fileSize,
-            fileHash: sessionData.fileHash || null,
-            totalChunks: sessionData.totalChunks,
-            chunkSize: sessionData.chunkSize,
-            uploadedChunks: [],
-            status: 'uploading', // uploading, completed, failed, cancelled
             owner: sessionData.owner,
+            chunks: JSON.stringify([]), // 存储为 JSON 字符串
+            totalChunks: sessionData.totalChunks || 0,
+            uploadedChunks: 0,
+            status: 'active', // active, completed, expired
             expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString() // 24小时后过期
         });
-
+        
         return session;
     }
 
@@ -36,115 +33,75 @@ class UploadSessionModel extends BaseModel {
      * 根据 uploadId 查询会话
      */
     async findByUploadId(uploadId) {
-        return await this.findOne({ uploadId });
+        const session = await this.findOne({ uploadId });
+        if (session && session.chunks) {
+            // 解析 chunks JSON
+            try {
+                session.chunks = JSON.parse(session.chunks);
+            } catch (error) {
+                session.chunks = [];
+            }
+        }
+        return session;
     }
 
     /**
-     * 更新已上传的分片
+     * 更新会话的分片数据
      */
-    async updateUploadedChunks(uploadId, chunkIndex) {
+    async updateChunks(uploadId, chunkIndex, chunkData) {
         const session = await this.findByUploadId(uploadId);
         if (!session) {
             throw new Error('上传会话不存在');
         }
 
-        // 添加分片索引（避免重复）
-        if (!session.uploadedChunks.includes(chunkIndex)) {
-            session.uploadedChunks.push(chunkIndex);
-            session.uploadedChunks.sort((a, b) => a - b);
-        }
-
-        // 检查是否完成
-        if (session.uploadedChunks.length === session.totalChunks) {
-            session.status = 'completed';
-        }
+        // 更新分片数据
+        session.chunks[chunkIndex] = chunkData;
+        session.uploadedChunks = session.chunks.filter(c => c).length;
 
         await this.update(session.id, {
-            uploadedChunks: session.uploadedChunks,
-            status: session.status,
-            updatedAt: new Date().toISOString()
+            chunks: JSON.stringify(session.chunks),
+            uploadedChunks: session.uploadedChunks
         });
 
         return session;
     }
 
     /**
-     * 获取缺失的分片列表
+     * 标记会话为已完成
      */
-    async getMissingChunks(uploadId) {
-        const session = await this.findByUploadId(uploadId);
-        if (!session) {
-            throw new Error('上传会话不存在');
-        }
-
-        const allChunks = Array.from({ length: session.totalChunks }, (_, i) => i);
-        const missingChunks = allChunks.filter(i => !session.uploadedChunks.includes(i));
-
-        return {
-            uploadId: session.uploadId,
-            totalChunks: session.totalChunks,
-            uploadedChunks: session.uploadedChunks.length,
-            missingChunks,
-            progress: Math.round((session.uploadedChunks.length / session.totalChunks) * 100)
-        };
-    }
-
-    /**
-     * 标记会话为完成
-     */
-    async completeSession(uploadId) {
+    async markCompleted(uploadId) {
         const session = await this.findByUploadId(uploadId);
         if (!session) {
             throw new Error('上传会话不存在');
         }
 
         await this.update(session.id, {
-            status: 'completed',
-            completedAt: new Date().toISOString()
+            status: 'completed'
         });
 
         return session;
     }
 
     /**
-     * 取消上传会话
+     * 删除会话
      */
-    async cancelSession(uploadId) {
+    async deleteSession(uploadId) {
         const session = await this.findByUploadId(uploadId);
-        if (!session) {
-            throw new Error('上传会话不存在');
+        if (session) {
+            await this.delete(session.id);
         }
-
-        await this.update(session.id, {
-            status: 'cancelled',
-            cancelledAt: new Date().toISOString()
-        });
-
-        return session;
     }
 
     /**
-     * 清理过期的上传会话
+     * 清理过期会话
      */
-    async cleanupExpiredSessions() {
+    async cleanExpiredSessions() {
         const now = new Date().toISOString();
         const sessions = await this.find({});
         
         let cleanedCount = 0;
-        
         for (const session of sessions) {
-            if (session.expiresAt < now && session.status !== 'completed') {
-                // 删除临时文件
-                try {
-                    const tempDir = path.join('./temp/uploads', session.uploadId);
-                    if (await fs.pathExists(tempDir)) {
-                        await fs.remove(tempDir);
-                    }
-                } catch (error) {
-                    console.error(`清理临时文件失败: ${session.uploadId}`, error);
-                }
-
-                // 删除会话记录
+            if (session.expiresAt < now || session.status === 'completed') {
                 await this.delete(session.id);
                 cleanedCount++;
             }
@@ -154,11 +111,20 @@ class UploadSessionModel extends BaseModel {
     }
 
     /**
-     * 获取用户的活跃上传会话
+     * 获取用户的活跃会话
      */
-    async getActiveSessionsByOwner(owner) {
-        const sessions = await this.find({ owner, status: 'uploading' });
-        return sessions.filter(s => new Date(s.expiresAt) > new Date());
+    async findActiveByOwner(owner) {
+        const sessions = await this.find({ owner, status: 'active' });
+        return sessions.map(session => {
+            if (session.chunks) {
+                try {
+                    session.chunks = JSON.parse(session.chunks);
+                } catch (error) {
+                    session.chunks = [];
+                }
+            }
+            return session;
+        });
     }
 }
 

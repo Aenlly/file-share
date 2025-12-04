@@ -117,10 +117,22 @@ const Dashboard = () => {
       render: (val) => `${val} 个`
     },
     {
-      title: '存储空间',
-      dataIndex: 'totalSize',
-      key: 'totalSize',
-      render: (val) => formatFileSize(val)
+      title: '存储使用',
+      dataIndex: 'storageUsed',
+      key: 'storageUsed',
+      render: (val, record) => {
+        const used = val || 0
+        const quota = record.storageQuota || 10 * 1024 * 1024 * 1024
+        const percentage = ((used / quota) * 100).toFixed(1)
+        const color = percentage > 90 ? '#ff4d4f' : percentage > 70 ? '#faad14' : '#52c41a'
+        return (
+          <span>
+            <span style={{ color }}>{formatFileSize(used)}</span>
+            <span style={{ color: '#999', fontSize: '12px' }}> / {formatFileSize(quota)}</span>
+            <div style={{ fontSize: '11px', color }}>({percentage}%)</div>
+          </span>
+        )
+      }
     },
     {
       title: '分享',
@@ -198,10 +210,13 @@ const Dashboard = () => {
                     <Col xs={24} sm={12} lg={6}>
                       <Card hoverable>
                         <Statistic
-                          title="总存储空间"
-                          value={formatFileSize(globalStats?.totals?.totalSize || 0)}
+                          title="总存储使用"
+                          value={formatFileSize(globalStats?.totals?.totalStorageUsed || 0)}
                           prefix={<DatabaseOutlined style={{ color: '#fa8c16' }} />}
                         />
+                        <div style={{ marginTop: 8, fontSize: '12px', color: '#999' }}>
+                          配额: {formatFileSize(globalStats?.totals?.totalStorageQuota || 0)}
+                        </div>
                       </Card>
                     </Col>
 
