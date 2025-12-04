@@ -40,6 +40,9 @@ async function initializeApp() {
         const UserModel = require('./models/UserModel');
         await UserModel.createDefaultAdmin();
 
+        // 请求ID中间件（必须在最前面，确保所有日志都有请求ID）
+        app.use(requestIdMiddleware);
+
         // 安全中间件
         app.use(helmet());
 
@@ -95,9 +98,6 @@ async function initializeApp() {
                 allowedHeaders: ['Content-Type', 'Authorization']
             }));
         }
-
-        // 请求ID中间件（必须在其他中间件之前）
-        app.use(requestIdMiddleware);
 
         // 请求日志
         app.use(requestLogger);
