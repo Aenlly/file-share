@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const { authenticate, requireAdmin, generateToken } = require('../middleware/auth');
 const { loginLimiter } = require('../middleware/rateLimiter');
+const { loginProtectionMiddleware } = require('../middleware/loginProtection');
 const logger = require('../utils/logger');
 const UserModel = require('../models/UserModel');
 const { sendError } = require('../config/errorCodes');
@@ -9,7 +10,7 @@ const { sendError } = require('../config/errorCodes');
 /**
  * 用户登录
  */
-router.post('/login', loginLimiter, async (req, res, next) => {
+router.post('/login', loginLimiter, loginProtectionMiddleware, async (req, res, next) => {
     try {
         const { username, password } = req.body;
 
@@ -19,10 +20,23 @@ router.post('/login', loginLimiter, async (req, res, next) => {
 
         const user = await UserModel.verifyPassword(username, password);
         if (!user) {
-            logger.warn(`登录失败: 用户名或密码错误 (${username})`);
-            return sendError(res, 'AUTH_INVALID_CREDENTIALS');
+            // 记录登录失败
+            const result = req.loginProtection.recordFailure();
+            logger.warn(`登录失败: 用户名或密码错误 (${username}), IP: ${req.loginProtection.ip}, 剩余尝试: ${result.remaining}`);
+            
+            // 返回错误信息，包含剩余尝试次数
+            return res.status(200).json({
+                success: false,
+                code: 'APF101',
+                error: result.remaining > 0 
+                    ? `用户名或密码错误，还剩 ${result.remaining} 次尝试机会`
+                    : '登录失败次数过多，账户已被临时锁定'
+            });
         }
 
+        // 登录成功，清除失败记录
+        req.loginProtection.clearFailures();
+        
         const token = generateToken(user);
         logger.info(`用户登录成功: ${username}`);
 
