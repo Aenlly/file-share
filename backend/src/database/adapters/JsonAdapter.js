@@ -16,12 +16,14 @@ class JsonAdapter extends BaseAdapter {
     async connect() {
         // 确保数据目录存在
         await fs.ensureDir(this.dataDir);
-        console.log(`✅ JSON数据库已连接: ${this.dataDir}`);
+        const logger = require('../../utils/logger');
+        logger.info(`JSON数据库已连接: ${this.dataDir}`);
     }
 
     async disconnect() {
         // JSON适配器无需断开连接
-        console.log('✅ JSON数据库已断开');
+        const logger = require('../../utils/logger');
+        logger.info('JSON数据库已断开');
     }
 
     /**

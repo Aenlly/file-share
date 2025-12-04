@@ -21,7 +21,8 @@ class PostgresqlAdapter extends BaseAdapter {
             await client.query('SELECT NOW()');
             client.release();
             
-            console.log(`✅ PostgreSQL已连接: ${this.config.host}:${this.config.port}`);
+            const logger = require('../../utils/logger');
+            logger.info(`PostgreSQL已连接: ${this.config.host}:${this.config.port}`);
         } catch (error) {
             console.error('PostgreSQL连接失败:', error);
             throw error;
@@ -31,7 +32,8 @@ class PostgresqlAdapter extends BaseAdapter {
     async disconnect() {
         if (this.pool) {
             await this.pool.end();
-            console.log('✅ PostgreSQL已断开');
+            const logger = require('../../utils/logger');
+            logger.info('PostgreSQL已断开');
         }
     }
 

@@ -22,7 +22,8 @@ class MongoDbAdapter extends BaseAdapter {
             const dbName = this.config.uri.split('/').pop().split('?')[0] || 'file-share';
             this.db = this.client.db(dbName);
             
-            console.log(`✅ MongoDB已连接: ${this.config.uri}`);
+            const logger = require('../../utils/logger');
+            logger.info(`MongoDB已连接: ${this.config.uri}`);
         } catch (error) {
             console.error('MongoDB连接失败:', error);
             throw error;
@@ -32,7 +33,8 @@ class MongoDbAdapter extends BaseAdapter {
     async disconnect() {
         if (this.client) {
             await this.client.close();
-            console.log('✅ MongoDB已断开');
+            const logger = require('../../utils/logger');
+            logger.info('MongoDB已断开');
         }
     }
 

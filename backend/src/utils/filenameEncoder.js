@@ -21,7 +21,8 @@ function encodeFilename(filename) {
         // 纯ASCII字符，直接返回
         return filename;
     } catch (error) {
-        console.error('文件名编码失败:', error);
+        const logger = require('./logger');
+        logger.error('文件名编码失败:', error);
         return filename;
     }
 }
@@ -44,7 +45,8 @@ function decodeFilename(encodedFilename) {
         // 没有前缀，直接返回
         return encodedFilename;
     } catch (error) {
-        console.error('文件名解码失败:', error);
+        const logger = require('./logger');
+        logger.error('文件名解码失败:', error);
         return encodedFilename;
     }
 }

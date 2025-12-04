@@ -3,13 +3,13 @@ const path = require('path');
 const fs = require('fs');
 const config = require('../config');
 
-// 日志配置
-const logConfig = config.log || {
-    level: config.logLevel || 'info',
-    dir: './logs',
-    maxSize: 20 * 1024 * 1024, // 20MB
-    maxFiles: 10,
-    maxDays: 30
+// 日志配置（使用可选链和空值合并）
+const logConfig = {
+    level: config.log?.level || config.logLevel || 'info',
+    dir: config.log?.dir || './logs',
+    maxSize: config.log?.maxSize || 20 * 1024 * 1024, // 20MB
+    maxFiles: config.log?.maxFiles || 10,
+    maxDays: config.log?.maxDays || 30
 };
 
 // 确保日志目录存在
@@ -229,12 +229,14 @@ function cleanupOldLogs() {
                 if (fileDate < cutoffDate) {
                     const filePath = path.join(logDir, file);
                     fs.unlinkSync(filePath);
-                    console.log(`[Logger] 清理过期日志: ${file}`);
+                    // 使用 winston 的底层日志（避免循环依赖）
+                    process.stdout.write(`[Logger] 清理过期日志: ${file}\n`);
                 }
             }
         });
     } catch (error) {
-        console.error('[Logger] 清理日志失败:', error.message);
+        // 使用 winston 的底层日志（避免循环依赖）
+        process.stderr.write(`[Logger] 清理日志失败: ${error.message}\n`);
     }
 }
 

@@ -41,8 +41,8 @@ async function initializeApp() {
 
         // 确保必要的目录存在
         await fs.ensureDir(config.database.json.dataDir);
-        await fs.ensureDir('files');
-        await fs.ensureDir('logs');
+        await fs.ensureDir(config.filesDir);
+        await fs.ensureDir(config.log.dir);
 
         // 创建默认管理员
         const UserModel = require('./models/UserModel');
@@ -111,9 +111,8 @@ async function initializeApp() {
         app.use(requestLogger);
 
         // 请求体解析 - 增加限制以支持大文件上传
-        const bodyLimit = process.env.BODY_LIMIT || '500mb';
-        app.use(express.json({ limit: bodyLimit }));
-        app.use(express.urlencoded({ limit: bodyLimit, extended: true }));
+        app.use(express.json({ limit: config.bodyLimit }));
+        app.use(express.urlencoded({ limit: config.bodyLimit, extended: true }));
 
         // 速率限制
         app.use('/api/', apiLimiter);

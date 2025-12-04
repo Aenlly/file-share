@@ -21,7 +21,8 @@ class MysqlAdapter extends BaseAdapter {
             await connection.ping();
             connection.release();
             
-            console.log(`✅ MySQL已连接: ${this.config.host}:${this.config.port}`);
+            const logger = require('../../utils/logger');
+            logger.info(`MySQL已连接: ${this.config.host}:${this.config.port}`);
         } catch (error) {
             console.error('MySQL连接失败:', error);
             throw error;
@@ -31,7 +32,8 @@ class MysqlAdapter extends BaseAdapter {
     async disconnect() {
         if (this.pool) {
             await this.pool.end();
-            console.log('✅ MySQL已断开');
+            const logger = require('../../utils/logger');
+            logger.info('MySQL已断开');
         }
     }
 

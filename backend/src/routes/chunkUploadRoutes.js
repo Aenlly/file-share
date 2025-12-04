@@ -227,9 +227,10 @@ router.post('/:folderId/chunk/complete', authenticate, async (req, res, next) =>
     }
 });
 
-// 启动时立即清理一次过期会话
-(async () => {
+// 延迟启动清理任务（等待数据库初始化完成）
+setTimeout(async () => {
     try {
+        // 首次清理
         const cleanedCount = await UploadSessionModel.cleanExpiredSessions();
         if (cleanedCount > 0) {
             logger.info(`启动时清理过期的分片上传会话: ${cleanedCount} 个`);
@@ -237,7 +238,7 @@ router.post('/:folderId/chunk/complete', authenticate, async (req, res, next) =>
     } catch (error) {
         logger.error('启动时清理上传会话失败:', error);
     }
-})();
+}, 5000); // 延迟5秒，确保数据库已初始化
 
 // 定期清理过期的分片上传会话（每10分钟）
 setInterval(async () => {

@@ -47,7 +47,8 @@ class DatabaseManager {
         }
 
         await this.adapter.connect();
-        console.log(`✅ 数据库管理器已初始化，使用${dbType}适配器`);
+        const logger = require('../utils/logger');
+        logger.info(`数据库管理器已初始化，使用${dbType}适配器`);
     }
 
     /**

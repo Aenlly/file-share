@@ -168,7 +168,7 @@ class UserModel extends BaseModel {
                 role: 'admin',
                 storageQuota: 100 * 1024 * 1024 * 1024 // 管理员默认100GB
             });
-            console.log('✅ 默认管理员创建成功：admin / admin123');
+            logger.info('默认管理员创建成功：admin / admin123');
         }
     }
 
