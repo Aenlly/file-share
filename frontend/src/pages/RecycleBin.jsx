@@ -169,23 +169,52 @@ const RecycleBin = () => {
 
   const columns = [
     {
-      title: '文件名',
+      title: '名称',
       dataIndex: 'originalName',
-      key: 'originalName',
+      key: 'name',
       ellipsis: true,
       width: isMobile ? 150 : undefined,
-      render: (text) => {
-        // 移除删除标记后缀显示
-        const displayName = text.replace(/\.deleted_.*$/, '')
-        return <span style={{ fontSize: isMobile ? 12 : 14 }}>{displayName}</span>
+      render: (text, record) => {
+        const isFolder = record.itemType === 'folder'
+        const displayName = isFolder 
+          ? record.folderAlias 
+          : (text || '').replace(/\.deleted_.*$/, '')
+        
+        return (
+          <span style={{ fontSize: isMobile ? 12 : 14 }}>
+            {isFolder && '📁 '}
+            {displayName}
+            {isFolder && record.fileCount > 0 && (
+              <span style={{ color: '#999', marginLeft: 8, fontSize: 12 }}>
+                ({record.fileCount} 个文件)
+              </span>
+            )}
+          </span>
+        )
       }
+    },
+    {
+      title: '类型',
+      dataIndex: 'itemType',
+      key: 'itemType',
+      width: isMobile ? 60 : 80,
+      render: (type) => (
+        <Tag color={type === 'folder' ? 'blue' : 'default'} style={{ fontSize: isMobile ? 11 : 12 }}>
+          {type === 'folder' ? '文件夹' : '文件'}
+        </Tag>
+      )
     },
     {
       title: '大小',
       dataIndex: 'size',
       key: 'size',
       width: isMobile ? 70 : 100,
-      render: (size) => <span style={{ fontSize: isMobile ? 11 : 14 }}>{formatFileSize(size)}</span>
+      render: (size, record) => {
+        if (record.itemType === 'folder') {
+          return <span style={{ fontSize: isMobile ? 11 : 14, color: '#999' }}>-</span>
+        }
+        return <span style={{ fontSize: isMobile ? 11 : 14 }}>{formatFileSize(size)}</span>
+      }
     },
     ...(!isMobile ? [{
       title: '删除时间',

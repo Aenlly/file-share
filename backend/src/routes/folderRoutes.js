@@ -3,6 +3,7 @@ const router = express.Router();
 
 const { authenticate } = require('../middleware/auth');
 const logger = require('../utils/logger');
+const config = require('../config');
 const FolderModel = require('../models/FolderModel');
 const ShareModel = require('../models/ShareModel');
 const FileModel = require('../models/FileModel');
@@ -18,6 +19,20 @@ const chunkUploadRoutes = require('./chunkUploadRoutes');
 router.use('/', imageRoutes);
 router.use('/', fileRoutes);
 router.use('/', chunkUploadRoutes);
+
+/**
+ * 获取上传配置
+ */
+router.get('/upload/config', authenticate, async (req, res, next) => {
+    try {
+        res.json({
+            chunkSize: config.chunkSize,
+            maxFileSize: config.maxFileSize
+        });
+    } catch (error) {
+        next(error);
+    }
+});
 
 /**
  * 获取用户的所有文件夹
@@ -84,16 +99,36 @@ router.get('/:folderId', authenticate, async (req, res, next) => {
 });
 
 /**
- * 删除文件夹（永久删除，不进入回收站）
+ * 删除文件夹（移至回收站）
  */
 router.delete('/:folderId', authenticate, async (req, res, next) => {
     try {
         const folderId = parseInt(req.params.folderId);
+        const RecycleBinModel = require('../models/RecycleBinModel');
 
-        // 获取文件夹中的文件数量
+        // 获取文件夹信息
+        const folder = await FolderModel.findById(folderId);
+        if (!folder) {
+            return sendError(res, 'FOLDER_NOT_FOUND');
+        }
+
+        // 检查权限
+        if (folder.owner !== req.user.username) {
+            return sendError(res, 'AUTH_FORBIDDEN');
+        }
+
+        // 获取文件夹中的所有文件
         const files = await FileModel.findByFolder(folderId);
-        const fileCount = files.length;
 
+        // 获取父文件夹信息（如果有）
+        let parentFolder = null;
+        if (folder.parentId) {
+            parentFolder = await FolderModel.findById(folder.parentId);
+        }
+
+        // 将文件夹和文件移至回收站
+        await RecycleBinModel.moveFolderToRecycleBin(folder, files, parentFolder);
+        
         // 删除文件夹记录
         await FolderModel.delete(folderId, req.user.username);
         
@@ -103,10 +138,10 @@ router.delete('/:folderId', authenticate, async (req, res, next) => {
         // 删除文件记录
         await FileModel.deleteByFolder(folderId);
 
-        logger.info(`删除文件夹: ID=${folderId}, 删除文件数: ${fileCount}`);
+        logger.info(`删除文件夹: ID=${folderId}, 文件数: ${files.length}, 已移至回收站`);
         res.json({ 
             success: true, 
-            message: `文件夹删除成功${fileCount > 0 ? `，已删除 ${fileCount} 个文件` : ''}` 
+            message: `文件夹已移至回收站${files.length > 0 ? `（包含 ${files.length} 个文件）` : ''}` 
         });
     } catch (error) {
         next(error);

@@ -6,8 +6,6 @@ const { PERMISSIONS, PERMISSION_GROUPS, ROLE_PRESETS } = require('../config/perm
 const UserModel = require('../models/UserModel');
 const logger = require('../utils/logger');
 const { sendError } = require('../config/errorCodes');
-const { sendError } = require('../config/errorCodes');
-const { sendError } = require('../config/errorCodes');
 
 /**
  * 获取所有权限定义

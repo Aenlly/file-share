@@ -200,8 +200,8 @@ const FolderManagement = () => {
             title={
               <div>
                 <div style={{ fontWeight: 'bold', marginBottom: 8 }}>确定要删除这个文件夹吗?</div>
-                <div style={{ color: '#ff4d4f', fontSize: 12 }}>
-                  ⚠️ 警告：删除文件夹将永久删除其中的所有文件，无法恢复！
+                <div style={{ color: '#faad14', fontSize: 12 }}>
+                  📁 文件夹将被移至回收站，可在30天内恢复
                 </div>
               </div>
             }

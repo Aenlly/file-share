@@ -133,7 +133,7 @@ const FolderDetail = () => {
               if (parentFolder) {
                 navigate(`/folder/${parentFolder.id}`)
               } else {
-                navigate('/dashboard')
+                navigate('/folders')
               }
             }}
           >

@@ -99,10 +99,12 @@ class FolderModel extends BaseModel {
             throw new Error('无权删除');
         }
 
-        // 删除物理文件夹
-        const folderPath = path.join(FILES_ROOT, folder.physicalPath);
-        if (await fs.pathExists(folderPath)) {
-            await fs.remove(folderPath);
+        // 删除物理文件夹（如果有 physicalPath）
+        if (folder.physicalPath) {
+            const folderPath = path.join(FILES_ROOT, folder.physicalPath);
+            if (await fs.pathExists(folderPath)) {
+                await fs.remove(folderPath);
+            }
         }
 
         // 删除数据库记录
