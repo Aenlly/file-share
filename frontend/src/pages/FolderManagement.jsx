@@ -197,9 +197,17 @@ const FolderManagement = () => {
             />
           </Tooltip>
           <Popconfirm
-            title="确定要删除这个文件夹吗?"
+            title={
+              <div>
+                <div style={{ fontWeight: 'bold', marginBottom: 8 }}>确定要删除这个文件夹吗?</div>
+                <div style={{ color: '#ff4d4f', fontSize: 12 }}>
+                  ⚠️ 警告：删除文件夹将永久删除其中的所有文件，无法恢复！
+                </div>
+              </div>
+            }
             onConfirm={() => handleDeleteFolder(record.id)}
-            okText="确定"
+            okText="确定删除"
+            okButtonProps={{ danger: true }}
             cancelText="取消"
           >
             <Tooltip title="删除文件夹">

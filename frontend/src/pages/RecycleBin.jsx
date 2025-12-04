@@ -29,8 +29,9 @@ const RecycleBin = () => {
   const { data: files = [], isLoading, refetch } = useQuery(
     'recycleBin',
     async () => {
-      const response = await api.get('/folders/trash/files')
-      return response.data
+      const response = await api.get('/folders/trash')
+      // 确保返回数组
+      return Array.isArray(response.data?.data) ? response.data.data : []
     }
   )
 

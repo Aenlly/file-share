@@ -22,12 +22,14 @@ const ERROR_CODES = {
     AUTH_OLD_PASSWORD_WRONG: { code: 'APF108', message: '旧密码错误' },
 
     // ========== 权限相关 APF2xx ==========
+    AUTH_FORBIDDEN: { code: 'APF201', message: '无权访问' },
     PERMISSION_DENIED: { code: 'APF201', message: '无权访问' },
     PERMISSION_ADMIN_REQUIRED: { code: 'APF202', message: '需要管理员权限' },
     PERMISSION_OWNER_REQUIRED: { code: 'APF203', message: '只有所有者可以操作' },
     PERMISSION_CANNOT_DELETE_SELF: { code: 'APF204', message: '不能删除自己' },
     PERMISSION_CANNOT_MODIFY: { code: 'APF205', message: '无权修改' },
     PERMISSION_CANNOT_DELETE: { code: 'APF206', message: '无权删除' },
+    AUTH_INVALID_PASSWORD: { code: 'APF207', message: '密码错误' },
 
     // ========== 资源相关 APF3xx ==========
     RESOURCE_NOT_FOUND: { code: 'APF301', message: '资源不存在' },
@@ -44,6 +46,10 @@ const ERROR_CODES = {
     EXPIRE_TIME_REQUIRED: { code: 'APF404', message: '过期时间不能为空' },
     SHARE_IDS_REQUIRED: { code: 'APF405', message: '分享ID列表不能为空' },
     NEW_PASSWORD_REQUIRED: { code: 'APF406', message: '新密码不能为空' },
+    SHARE_INVALID_INPUT: { code: 'APF407', message: '分享参数错误' },
+    USER_INVALID_INPUT: { code: 'APF408', message: '用户参数错误' },
+    SHARE_CODE_REQUIRED: { code: 'APF409', message: '访问码不能为空' },
+    FILE_NOT_IMAGE: { code: 'APF410', message: '不是图片文件' },
 
     // ========== 服务器错误 APF5xx ==========
     SERVER_ERROR: { code: 'APF500', message: '服务器内部错误' },
@@ -64,6 +70,7 @@ const ERROR_CODES = {
     // ========== 用户相关 APF8xx ==========
     USER_ALREADY_EXISTS: { code: 'APF801', message: '用户名已存在' },
     USER_CREATE_FAILED: { code: 'APF802', message: '创建用户失败' },
+    USER_CANNOT_DELETE_SELF: { code: 'APF803', message: '不能删除自己' },
 
     // ========== 系统限制 APF9xx ==========
     RATE_LIMIT_EXCEEDED: { code: 'APF901', message: '请求过于频繁，请稍后再试' },

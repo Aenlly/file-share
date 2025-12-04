@@ -4,6 +4,7 @@
 
 const logger = require('../utils/logger');
 const UserModel = require('../models/UserModel');
+const { sendError } = require('../config/errorCodes');
 
 /**
  * 检查用户是否拥有指定权限
@@ -13,14 +14,14 @@ const UserModel = require('../models/UserModel');
 const requirePermission = (requiredPermissions, mode = 'any') => {
     return async (req, res, next) => {
         if (!req.user) {
-            return res.status(401).json({ error: '未登录' });
+            return sendError(res, 'AUTH_TOKEN_MISSING');
         }
 
         try {
             // 获取用户完整信息（包含权限）
             const user = await UserModel.findById(req.user.id);
             if (!user) {
-                return res.status(401).json({ error: '用户不存在' });
+                return sendError(res, 'AUTH_USER_NOT_FOUND');
             }
 
             const userPermissions = user.permissions || [];
@@ -46,10 +47,7 @@ const requirePermission = (requiredPermissions, mode = 'any') => {
                     path: req.path,
                     ip: req.ip
                 });
-                return res.status(403).json({ 
-                    error: '权限不足',
-                    required: permissions 
-                });
+                return sendError(res, 'PERMISSION_DENIED', `需要权限: ${permissions.join(', ')}`);
             }
 
             // 将用户权限附加到请求对象
@@ -57,7 +55,7 @@ const requirePermission = (requiredPermissions, mode = 'any') => {
             next();
         } catch (error) {
             logger.error('权限检查失败', { error: error.message });
-            return res.status(500).json({ error: '权限检查失败' });
+            return sendError(res, 'SERVER_ERROR', '权限检查失败');
         }
     };
 };
@@ -70,13 +68,13 @@ const requirePermission = (requiredPermissions, mode = 'any') => {
 const canAccessResource = (resourceType, action) => {
     return async (req, res, next) => {
         if (!req.user) {
-            return res.status(401).json({ error: '未登录' });
+            return sendError(res, 'AUTH_TOKEN_MISSING');
         }
 
         try {
             const user = await UserModel.findById(req.user.id);
             if (!user) {
-                return res.status(401).json({ error: '用户不存在' });
+                return sendError(res, 'AUTH_USER_NOT_FOUND');
             }
 
             const userPermissions = user.permissions || [];
@@ -102,13 +100,10 @@ const canAccessResource = (resourceType, action) => {
                 path: req.path
             });
 
-            return res.status(403).json({ 
-                error: '权限不足',
-                required: `${resourceType}:${action}:own` 
-            });
+            return sendError(res, 'PERMISSION_DENIED', `需要权限: ${resourceType}:${action}:own`);
         } catch (error) {
             logger.error('资源权限检查失败', { error: error.message });
-            return res.status(500).json({ error: '权限检查失败' });
+            return sendError(res, 'SERVER_ERROR', '权限检查失败');
         }
     };
 };

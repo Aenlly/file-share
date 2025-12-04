@@ -74,7 +74,7 @@ router.post('/', authenticate, requireAdmin, async (req, res, next) => {
         const { username, password, role } = req.body;
 
         if (!username || !password) {
-            return res.status(400).json({ error: '用户名和密码不能为空' });
+            return sendError(res, 'USER_INVALID_INPUT');
         }
 
         const user = await UserModel.create({
@@ -87,7 +87,7 @@ router.post('/', authenticate, requireAdmin, async (req, res, next) => {
         res.status(201).json(user);
     } catch (error) {
         if (error.message.includes('已存在')) {
-            return res.status(409).json({ error: error.message });
+            return sendError(res, 'USER_ALREADY_EXISTS');
         }
         next(error);
     }
@@ -100,7 +100,7 @@ router.get('/me', authenticate, async (req, res, next) => {
     try {
         const user = await UserModel.findById(req.user.id);
         if (!user) {
-            return res.status(404).json({ error: '用户不存在' });
+            return sendError(res, 'USER_NOT_FOUND');
         }
 
         const { password, ...safe } = user;
@@ -234,7 +234,7 @@ router.put('/:id', authenticate, async (req, res, next) => {
 
         // 只有管理员可以更新其他用户
         if (req.user.id !== userId && req.user.role !== 'admin') {
-            return res.status(403).json({ error: '无权修改' });
+            return sendError(res, 'AUTH_FORBIDDEN');
         }
 
         if (role) {
@@ -260,11 +260,11 @@ router.post('/:id/change-password', authenticate, async (req, res, next) => {
 
         // 只能修改自己的密码，除非是管理员
         if (req.user.id !== userId && req.user.role !== 'admin') {
-            return res.status(403).json({ error: '无权修改' });
+            return sendError(res, 'AUTH_FORBIDDEN');
         }
 
         if (!newPassword) {
-            return res.status(400).json({ error: '新密码不能为空' });
+            return sendError(res, 'USER_INVALID_INPUT');
         }
 
         // 非管理员需要验证旧密码
@@ -272,7 +272,7 @@ router.post('/:id/change-password', authenticate, async (req, res, next) => {
             const user = await UserModel.findById(userId);
             const verified = await UserModel.verifyPassword(user.username, oldPassword);
             if (!verified) {
-                return res.status(401).json({ error: '旧密码错误' });
+                return sendError(res, 'AUTH_INVALID_PASSWORD');
             }
         }
 
@@ -294,12 +294,12 @@ router.delete('/:id', authenticate, requireAdmin, async (req, res, next) => {
 
         // 不能删除自己
         if (req.user.id === userId) {
-            return res.status(400).json({ error: '不能删除自己' });
+            return sendError(res, 'USER_CANNOT_DELETE_SELF');
         }
 
         const user = await UserModel.findById(userId);
         if (!user) {
-            return res.status(404).json({ error: '用户不存在' });
+            return sendError(res, 'USER_NOT_FOUND');
         }
 
         logger.info(`开始删除用户及其所有数据: ${user.username}`);

@@ -10,6 +10,7 @@ const RecycleBinModel = require('../models/RecycleBinModel');
 const FolderModel = require('../models/FolderModel');
 const FileModel = require('../models/FileModel');
 const { FILES_ROOT } = require('../utils/fileHelpers');
+const { sendError } = require('../config/errorCodes');
 
 /**
  * 获取回收站文件列表
@@ -20,7 +21,10 @@ router.get('/', authenticate, canAccessResource('recycle', 'view'), async (req, 
         
         logger.info(`获取回收站文件列表: user=${req.user.username}, count=${files.length}`);
         
-        res.json(files);
+        res.json({
+            success: true,
+            data: files
+        });
     } catch (error) {
         logger.error('获取回收站文件列表失败:', error);
         next(error);
@@ -36,12 +40,12 @@ router.post('/restore/:fileId', authenticate, canAccessResource('recycle', 'rest
         
         const recycleBinFile = await RecycleBinModel.findById(fileId);
         if (!recycleBinFile) {
-            return res.status(404).json({ error: '文件不存在' });
+            return sendError(res, 'FILE_NOT_FOUND');
         }
 
         // 检查权限
         if (!req.canManageAll && recycleBinFile.owner !== req.user.username) {
-            return res.status(403).json({ error: '权限不足' });
+            return sendError(res, 'AUTH_FORBIDDEN');
         }
 
         // 恢复文件
@@ -118,12 +122,12 @@ router.delete('/:fileId', authenticate, canAccessResource('recycle', 'delete'), 
         
         const recycleBinFile = await RecycleBinModel.findById(fileId);
         if (!recycleBinFile) {
-            return res.status(404).json({ error: '文件不存在' });
+            return sendError(res, 'FILE_NOT_FOUND');
         }
 
         // 检查权限
         if (!req.canManageAll && recycleBinFile.owner !== req.user.username) {
-            return res.status(403).json({ error: '权限不足' });
+            return sendError(res, 'AUTH_FORBIDDEN');
         }
 
         // 删除物理文件

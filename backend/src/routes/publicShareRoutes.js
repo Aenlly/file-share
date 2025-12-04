@@ -1,4 +1,4 @@
-const express = require('express');
+﻿const express = require('express');
 const router = express.Router();
 const path = require('path');
 const fs = require('fs-extra');
@@ -11,6 +11,7 @@ const FolderModel = require('../models/FolderModel');
 const FileModel = require('../models/FileModel');
 const ShareAccessLogModel = require('../models/ShareAccessLogModel');
 const { FILES_ROOT } = require('../utils/fileHelpers');
+const { sendError } = require('../config/errorCodes');
 
 /**
  * 获取访问者信息（IP和设备码）
@@ -66,7 +67,7 @@ router.get('/share/:code', async (req, res, next) => {
         const validation = await ShareModel.validateShare(code);
         if (!validation.valid) {
             logger.warn(`分享验证失败: ${validation.reason}`);
-            return res.status(410).json({ error: validation.reason });
+            return sendError(res, 'SHARE_EXPIRED', validation.reason);
         }
 
         const share = validation.share;
@@ -78,7 +79,7 @@ router.get('/share/:code', async (req, res, next) => {
         
         if (!targetFolder) {
             logger.warn(`目标文件夹不存在: folderId=${targetFolderId}`);
-            return res.status(404).json({ error: '文件夹不存在' });
+            return sendError(res, 'FOLDER_NOT_FOUND');
         }
         
         // 验证目标文件夹是否属于分享的文件夹树（安全检查）
@@ -98,7 +99,7 @@ router.get('/share/:code', async (req, res, next) => {
             
             if (!isValid) {
                 logger.warn(`无权访问文件夹: folderId=${targetFolderId}, shareFolderId=${share.folderId}`);
-                return res.status(403).json({ error: '无权访问此文件夹' });
+                return sendError(res, 'AUTH_FORBIDDEN');
             }
         }
         
@@ -143,12 +144,12 @@ router.post('/shares/verify', async (req, res, next) => {
         const { code } = req.body;
 
         if (!code) {
-            return res.status(400).json({ error: '访问码不能为空' });
+            return sendError(res, 'SHARE_CODE_REQUIRED');
         }
 
         const validation = await ShareModel.validateShare(code);
         if (!validation.valid) {
-            return res.status(410).json({ error: validation.reason });
+            return sendError(res, 'SHARE_EXPIRED', validation.reason);
         }
 
         const share = validation.share;
@@ -174,7 +175,7 @@ router.get('/shares/:code/files', async (req, res, next) => {
         const validation = await ShareModel.validateShare(code);
         if (!validation.valid) {
             logger.warn(`分享验证失败: ${validation.reason}`);
-            return res.status(410).json({ error: validation.reason });
+            return sendError(res, 'SHARE_EXPIRED', validation.reason);
         }
 
         const share = validation.share;
@@ -201,7 +202,7 @@ router.get('/share/:code/file/:filename', async (req, res, next) => {
 
         const validation = await ShareModel.validateShare(code);
         if (!validation.valid) {
-            return res.status(410).json({ error: validation.reason });
+            return sendError(res, 'SHARE_EXPIRED', validation.reason);
         }
 
         const share = validation.share;
@@ -209,17 +210,17 @@ router.get('/share/:code/file/:filename', async (req, res, next) => {
         const folder = await FolderModel.findById(targetFolderId);
 
         if (!folder) {
-            return res.status(404).json({ error: '文件夹不存在' });
+            return sendError(res, 'FOLDER_NOT_FOUND');
         }
 
         const fileRecord = await FileModel.findByOriginalName(decodedFilename, targetFolderId);
         if (!fileRecord) {
-            return res.status(404).json({ error: '文件不存在' });
+            return sendError(res, 'FILE_NOT_FOUND');
         }
 
         const filePath = path.join(FILES_ROOT, folder.physicalPath, fileRecord.savedName);
         if (!await fs.pathExists(filePath)) {
-            return res.status(404).json({ error: '文件不存在' });
+            return sendError(res, 'FILE_NOT_FOUND');
         }
 
         logger.info(`访客下载文件: ${decodedFilename} (访问码: ${code}, 文件夹: ${targetFolderId})`);
@@ -239,24 +240,24 @@ router.get('/shares/:code/download/:filename', async (req, res, next) => {
 
         const validation = await ShareModel.validateShare(code);
         if (!validation.valid) {
-            return res.status(410).json({ error: validation.reason });
+            return sendError(res, 'SHARE_EXPIRED', validation.reason);
         }
 
         const share = validation.share;
         const folder = await FolderModel.findById(share.folderId);
 
         if (!folder) {
-            return res.status(404).json({ error: '文件夹不存在' });
+            return sendError(res, 'FOLDER_NOT_FOUND');
         }
 
         const fileRecord = await FileModel.findByOriginalName(decodedFilename, share.folderId);
         if (!fileRecord) {
-            return res.status(404).json({ error: '文件不存在' });
+            return sendError(res, 'FILE_NOT_FOUND');
         }
 
         const filePath = path.join(FILES_ROOT, folder.physicalPath, fileRecord.savedName);
         if (!await fs.pathExists(filePath)) {
-            return res.status(404).json({ error: '文件不存在' });
+            return sendError(res, 'FILE_NOT_FOUND');
         }
 
         logger.info(`访客下载文件: ${decodedFilename} (访问码: ${code})`);
@@ -276,7 +277,7 @@ router.get('/share/:code/download', async (req, res, next) => {
 
         const validation = await ShareModel.validateShare(code);
         if (!validation.valid) {
-            return res.status(410).json({ error: validation.reason });
+            return sendError(res, 'SHARE_EXPIRED', validation.reason);
         }
 
         const share = validation.share;
@@ -284,12 +285,12 @@ router.get('/share/:code/download', async (req, res, next) => {
         const folder = await FolderModel.findById(targetFolderId);
 
         if (!folder) {
-            return res.status(404).json({ error: '文件夹不存在' });
+            return sendError(res, 'FOLDER_NOT_FOUND');
         }
 
         const dirPath = path.join(FILES_ROOT, folder.physicalPath);
         if (!await fs.pathExists(dirPath)) {
-            return res.status(404).json({ error: '文件夹不存在' });
+            return sendError(res, 'FOLDER_NOT_FOUND');
         }
 
         // 递归添加文件到ZIP
@@ -347,19 +348,19 @@ router.get('/shares/:code/download-all', async (req, res, next) => {
 
         const validation = await ShareModel.validateShare(code);
         if (!validation.valid) {
-            return res.status(410).json({ error: validation.reason });
+            return sendError(res, 'SHARE_EXPIRED', validation.reason);
         }
 
         const share = validation.share;
         const folder = await FolderModel.findById(share.folderId);
 
         if (!folder) {
-            return res.status(404).json({ error: '文件夹不存在' });
+            return sendError(res, 'FOLDER_NOT_FOUND');
         }
 
         const dirPath = path.join(FILES_ROOT, folder.physicalPath);
         if (!await fs.pathExists(dirPath)) {
-            return res.status(404).json({ error: '文件夹不存在' });
+            return sendError(res, 'FOLDER_NOT_FOUND');
         }
 
         // 递归添加文件到ZIP
@@ -419,31 +420,31 @@ router.get('/shares/:code/preview/:filename', async (req, res, next) => {
 
         const validation = await ShareModel.validateShare(code);
         if (!validation.valid) {
-            return res.status(410).json({ error: validation.reason });
+            return sendError(res, 'SHARE_EXPIRED', validation.reason);
         }
 
         const share = validation.share;
         const folder = await FolderModel.findById(share.folderId);
 
         if (!folder) {
-            return res.status(404).json({ error: '文件夹不存在' });
+            return sendError(res, 'FOLDER_NOT_FOUND');
         }
 
         const fileRecord = await FileModel.findByOriginalName(decodedFilename, share.folderId);
         if (!fileRecord) {
-            return res.status(404).json({ error: '文件不存在' });
+            return sendError(res, 'FILE_NOT_FOUND');
         }
 
         const filePath = path.join(FILES_ROOT, folder.physicalPath, fileRecord.savedName);
         if (!await fs.pathExists(filePath)) {
-            return res.status(404).json({ error: '文件不存在' });
+            return sendError(res, 'FILE_NOT_FOUND');
         }
 
         // 检查是否为图片
         const imageExtensions = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp'];
         const ext = path.extname(decodedFilename).toLowerCase();
         if (!imageExtensions.includes(ext)) {
-            return res.status(400).json({ error: '不是图片文件' });
+            return sendError(res, 'FILE_NOT_IMAGE');
         }
 
         try {
@@ -475,7 +476,7 @@ router.get('/shares/:code/preview/:filename', async (req, res, next) => {
             res.send(buffer);
         } catch (error) {
             logger.error(`生成图片预览失败: ${decodedFilename}`, error);
-            res.status(500).json({ error: '生成预览失败' });
+            sendError(res, 'SERVER_ERROR', '生成预览失败');
         }
     } catch (error) {
         next(error);
@@ -493,7 +494,7 @@ router.get('/shares/:code/subfolders', async (req, res, next) => {
         const validation = await ShareModel.validateShare(code);
         if (!validation.valid) {
             logger.warn(`分享验证失败: ${validation.reason}`);
-            return res.status(410).json({ error: validation.reason });
+            return sendError(res, 'SHARE_EXPIRED', validation.reason);
         }
 
         const share = validation.share;

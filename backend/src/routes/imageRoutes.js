@@ -10,6 +10,7 @@ const FolderModel = require('../models/FolderModel');
 const FileModel = require('../models/FileModel');
 const { FILES_ROOT } = require('../utils/fileHelpers');
 const { isFolderOwnedByUser } = require('./helpers/fileHelpers');
+const { sendError } = require('../config/errorCodes');
 
 /**
  * 处理 EXIF 旋转信息
@@ -44,12 +45,12 @@ router.get('/:id/preview/:filename', authenticate, async (req, res, next) => {
         logger.info(`获取图片预览: folderId=${folderId}, filename=${decodedFilename}`);
 
         if (!await isFolderOwnedByUser(folderId, req.user.username)) {
-            return res.status(403).json({ error: '无权访问此文件夹' });
+            return sendError(res, 'AUTH_FORBIDDEN');
         }
 
         const folder = await FolderModel.findById(folderId);
         if (!folder) {
-            return res.status(404).json({ error: '文件夹不存在' });
+            return sendError(res, 'FOLDER_NOT_FOUND');
         }
 
         let fileRecord = await FileModel.findBySavedName(decodedFilename, folderId);
@@ -58,18 +59,18 @@ router.get('/:id/preview/:filename', authenticate, async (req, res, next) => {
         }
 
         if (!fileRecord) {
-            return res.status(404).json({ error: '文件不存在' });
+            return sendError(res, 'FILE_NOT_FOUND');
         }
 
         const filePath = path.join(FILES_ROOT, folder.physicalPath, fileRecord.savedName);
         if (!await fs.pathExists(filePath)) {
-            return res.status(404).json({ error: '文件不存在' });
+            return sendError(res, 'FILE_NOT_FOUND');
         }
 
         const imageExtensions = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp'];
         const ext = path.extname(fileRecord.savedName).toLowerCase();
         if (!imageExtensions.includes(ext)) {
-            return res.status(400).json({ error: '不是图片文件' });
+            return sendError(res, 'FILE_NOT_IMAGE');
         }
 
         const image = await Jimp.read(filePath);
@@ -100,28 +101,28 @@ router.get('/:folderId/preview/by-id/:fileId', authenticate, async (req, res, ne
         const fileIdInt = parseInt(fileId);
 
         if (!await isFolderOwnedByUser(folderIdInt, req.user.username)) {
-            return res.status(403).json({ error: '无权访问此文件夹' });
+            return sendError(res, 'AUTH_FORBIDDEN');
         }
 
         const folder = await FolderModel.findById(folderIdInt);
         if (!folder) {
-            return res.status(404).json({ error: '文件夹不存在' });
+            return sendError(res, 'FOLDER_NOT_FOUND');
         }
 
         const fileRecord = await FileModel.findById(fileIdInt);
         if (!fileRecord || fileRecord.folderId !== folderIdInt) {
-            return res.status(404).json({ error: '文件不存在' });
+            return sendError(res, 'FILE_NOT_FOUND');
         }
 
         const filePath = path.join(FILES_ROOT, folder.physicalPath, fileRecord.savedName);
         if (!await fs.pathExists(filePath)) {
-            return res.status(404).json({ error: '文件不存在' });
+            return sendError(res, 'FILE_NOT_FOUND');
         }
 
         const imageExtensions = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp'];
         const ext = path.extname(fileRecord.savedName).toLowerCase();
         if (!imageExtensions.includes(ext)) {
-            return res.status(400).json({ error: '不是图片文件' });
+            return sendError(res, 'FILE_NOT_IMAGE');
         }
 
         const image = await Jimp.read(filePath);

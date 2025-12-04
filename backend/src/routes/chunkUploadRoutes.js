@@ -10,6 +10,7 @@ const FolderModel = require('../models/FolderModel');
 const FileModel = require('../models/FileModel');
 const { FILES_ROOT, generateUniqueFilename, decodeFilename } = require('../utils/fileHelpers');
 const { isFolderOwnedByUser, calculateFileHash } = require('./helpers/fileHelpers');
+const { sendError } = require('../config/errorCodes');
 
 // 存储分片上传的临时数据
 const chunkUploads = new Map();
@@ -33,16 +34,16 @@ router.post('/:folderId/chunk/init', authenticate, async (req, res, next) => {
         const { fileName, fileSize } = req.body;
 
         if (!fileName || !fileSize) {
-            return res.status(400).json({ error: '文件名和文件大小不能为空' });
+            return sendError(res, 'PARAM_MISSING', '文件名和文件大小不能为空');
         }
 
         const folder = await FolderModel.findById(folderId);
         if (!folder) {
-            return res.status(404).json({ error: '文件夹不存在' });
+            return sendError(res, 'FOLDER_NOT_FOUND');
         }
 
         if (!await isFolderOwnedByUser(folderId, req.user.username)) {
-            return res.status(403).json({ error: '无权访问' });
+            return sendError(res, 'AUTH_FORBIDDEN');
         }
 
         const uploadId = `${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
@@ -76,16 +77,16 @@ router.post('/:folderId/chunk', authenticate, async (req, res, next) => {
         const { uploadId, chunkIndex, chunk } = req.body;
 
         if (!uploadId || chunkIndex === undefined || !chunk) {
-            return res.status(400).json({ error: '缺少必要参数' });
+            return sendError(res, 'PARAM_MISSING');
         }
 
         const uploadInfo = chunkUploads.get(uploadId);
         if (!uploadInfo) {
-            return res.status(404).json({ error: '上传会话不存在或已过期' });
+            return sendError(res, 'RESOURCE_NOT_FOUND', '上传会话不存在或已过期');
         }
 
         if (uploadInfo.folderId !== folderId) {
-            return res.status(400).json({ error: '文件夹ID不匹配' });
+            return sendError(res, 'PARAM_INVALID', '文件夹ID不匹配');
         }
 
         const chunkBuffer = Buffer.from(chunk, 'base64');
@@ -107,22 +108,22 @@ router.post('/:folderId/chunk/complete', authenticate, async (req, res, next) =>
         const { uploadId } = req.body;
 
         if (!uploadId) {
-            return res.status(400).json({ error: '缺少uploadId' });
+            return sendError(res, 'PARAM_MISSING', '缺少uploadId');
         }
 
         const uploadInfo = chunkUploads.get(uploadId);
         if (!uploadInfo) {
-            return res.status(404).json({ error: '上传会话不存在或已过期' });
+            return sendError(res, 'RESOURCE_NOT_FOUND', '上传会话不存在或已过期');
         }
 
         if (uploadInfo.folderId !== folderId) {
-            return res.status(400).json({ error: '文件夹ID不匹配' });
+            return sendError(res, 'PARAM_INVALID', '文件夹ID不匹配');
         }
 
         const folder = await FolderModel.findById(folderId);
         if (!folder) {
             chunkUploads.delete(uploadId);
-            return res.status(404).json({ error: '文件夹不存在' });
+            return sendError(res, 'FOLDER_NOT_FOUND');
         }
 
         const fileBuffer = Buffer.concat(uploadInfo.chunks);
@@ -131,7 +132,9 @@ router.post('/:folderId/chunk/complete', authenticate, async (req, res, next) =>
         const existingByHash = await FileModel.findByHash(fileHash, folderId);
         if (existingByHash) {
             chunkUploads.delete(uploadId);
-            return res.status(409).json({ 
+            return res.status(200).json({ 
+                success: false,
+                code: 'FILE_ALREADY_EXISTS',
                 error: '文件已存在',
                 existingFile: existingByHash.originalName 
             });

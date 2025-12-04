@@ -7,6 +7,7 @@ const FolderModel = require('../models/FolderModel');
 const ShareModel = require('../models/ShareModel');
 const FileModel = require('../models/FileModel');
 const { isFolderOwnedByUser } = require('./helpers/fileHelpers');
+const { sendError } = require('../config/errorCodes');
 
 // 导入子路由
 const imageRoutes = require('./imageRoutes');
@@ -41,7 +42,7 @@ router.post('/', authenticate, async (req, res, next) => {
         const { alias, parentId } = req.body;
 
         if (!alias) {
-            return res.status(400).json({ error: '文件夹名称不能为空' });
+            return sendError(res, 'PARAM_INVALID', '文件夹名称不能为空');
         }
 
         const folder = await FolderModel.create({
@@ -68,11 +69,11 @@ router.get('/:folderId', authenticate, async (req, res, next) => {
         const folder = await FolderModel.findById(folderId);
 
         if (!folder) {
-            return res.status(404).json({ error: '文件夹不存在' });
+            return sendError(res, 'FOLDER_NOT_FOUND');
         }
 
         if (!await isFolderOwnedByUser(folderId, req.user.username)) {
-            return res.status(403).json({ error: '无权访问' });
+            return sendError(res, 'AUTH_FORBIDDEN');
         }
 
         res.json(folder);
@@ -83,18 +84,30 @@ router.get('/:folderId', authenticate, async (req, res, next) => {
 });
 
 /**
- * 删除文件夹
+ * 删除文件夹（永久删除，不进入回收站）
  */
 router.delete('/:folderId', authenticate, async (req, res, next) => {
     try {
         const folderId = parseInt(req.params.folderId);
 
+        // 获取文件夹中的文件数量
+        const files = await FileModel.findByFolder(folderId);
+        const fileCount = files.length;
+
+        // 删除文件夹记录
         await FolderModel.delete(folderId, req.user.username);
+        
+        // 删除相关分享
         await ShareModel.deleteByFolderId(folderId);
+        
+        // 删除文件记录
         await FileModel.deleteByFolder(folderId);
 
-        logger.info(`删除文件夹: ID=${folderId}`);
-        res.json({ success: true, message: '文件夹删除成功' });
+        logger.info(`删除文件夹: ID=${folderId}, 删除文件数: ${fileCount}`);
+        res.json({ 
+            success: true, 
+            message: `文件夹删除成功${fileCount > 0 ? `，已删除 ${fileCount} 个文件` : ''}` 
+        });
     } catch (error) {
         next(error);
     }
@@ -111,11 +124,11 @@ router.get('/:folderId/subfolders', authenticate, async (req, res, next) => {
         const folder = await FolderModel.findById(folderId);
 
         if (!folder) {
-            return res.status(404).json({ error: '文件夹不存在' });
+            return sendError(res, 'FOLDER_NOT_FOUND');
         }
 
         if (!await isFolderOwnedByUser(folderId, req.user.username)) {
-            return res.status(403).json({ error: '无权访问' });
+            return sendError(res, 'AUTH_FORBIDDEN');
         }
 
         const subFolders = await FolderModel.findByParentId(folderId, req.user.username);

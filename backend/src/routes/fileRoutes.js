@@ -11,6 +11,7 @@ const FolderModel = require('../models/FolderModel');
 const FileModel = require('../models/FileModel');
 const { FILES_ROOT, generateUniqueFilename, decodeFilename } = require('../utils/fileHelpers');
 const { isFolderOwnedByUser, calculateFileHash } = require('./helpers/fileHelpers');
+const { sendError } = require('../config/errorCodes');
 
 // 配置multer
 const MAX_FILE_SIZE = parseInt(process.env.MAX_FILE_SIZE || '524288000');
@@ -33,11 +34,11 @@ router.get('/:folderId/files', authenticate, async (req, res, next) => {
         
         const folder = await FolderModel.findById(folderId);
         if (!folder) {
-            return res.status(404).json({ error: '文件夹不存在' });
+            return sendError(res, 'FOLDER_NOT_FOUND');
         }
 
         if (!await isFolderOwnedByUser(folderId, req.user.username)) {
-            return res.status(403).json({ error: '无权访问' });
+            return sendError(res, 'AUTH_FORBIDDEN');
         }
 
         const files = await FileModel.findByFolder(folderId);
@@ -58,15 +59,15 @@ router.post('/:folderId/upload', authenticate, uploadLimiter, upload.array('file
         const folder = await FolderModel.findById(folderId);
 
         if (!folder) {
-            return res.status(404).json({ error: '文件夹不存在' });
+            return sendError(res, 'FOLDER_NOT_FOUND');
         }
 
         if (!await isFolderOwnedByUser(folderId, req.user.username)) {
-            return res.status(403).json({ error: '无权访问' });
+            return sendError(res, 'AUTH_FORBIDDEN');
         }
 
         if (!req.files || req.files.length === 0) {
-            return res.status(400).json({ error: '没有上传文件' });
+            return sendError(res, 'PARAM_INVALID', '没有上传文件');
         }
 
         const dirPath = path.join(FILES_ROOT, folder.physicalPath);
@@ -169,7 +170,7 @@ router.post('/:folderId/upload', authenticate, uploadLimiter, upload.array('file
         };
 
         if (existingFiles.length > 0 && !forceUpload) {
-            return res.status(409).json(result);
+            return res.status(200).json(result);
         }
 
         res.json(result);
@@ -237,19 +238,11 @@ router.get('/:folderId/download/:filename', authenticate, async (req, res, next)
 
         const folder = await FolderModel.findById(folderId);
         if (!folder) {
-            return res.status(404).json({ 
-                success: false, 
-                code: 'FOLDER_NOT_FOUND',
-                error: '文件夹不存在' 
-            });
+            return sendError(res, 'FOLDER_NOT_FOUND');
         }
 
         if (!await isFolderOwnedByUser(folderId, req.user.username)) {
-            return res.status(403).json({ 
-                success: false, 
-                code: 'FOLDER_FORBIDDEN',
-                error: '无权访问' 
-            });
+            return sendError(res, 'AUTH_FORBIDDEN');
         }
 
         let fileRecord = await FileModel.findBySavedName(filename, folderId);
@@ -258,21 +251,13 @@ router.get('/:folderId/download/:filename', authenticate, async (req, res, next)
         }
         
         if (!fileRecord) {
-            return res.status(404).json({ 
-                success: false, 
-                code: 'FILE_NOT_FOUND',
-                error: '文件不存在' 
-            });
+            return sendError(res, 'FILE_NOT_FOUND');
         }
 
         const filePath = path.join(FILES_ROOT, folder.physicalPath, fileRecord.savedName);
         
         if (!await fs.pathExists(filePath)) {
-            return res.status(404).json({ 
-                success: false, 
-                code: 'FILE_PHYSICAL_NOT_FOUND',
-                error: '文件不存在' 
-            });
+            return sendError(res, 'FILE_NOT_FOUND');
         }
 
         res.set({
@@ -293,46 +278,34 @@ router.get('/:folderId/download/:filename', authenticate, async (req, res, next)
  */
 router.get('/:folderId/download/by-id/:fileId', authenticate, async (req, res, next) => {
     try {
-        const folderId = parseInt(req.params.folderId);
         const fileId = parseInt(req.params.fileId);
         
-        logger.info(`通过ID下载文件: folderId=${folderId}, fileId=${fileId}`);
+        logger.info(`通过ID下载文件: fileId=${fileId}`);
 
-        const folder = await FolderModel.findById(folderId);
-        if (!folder) {
-            return res.status(404).json({ 
-                success: false, 
-                code: 'FOLDER_NOT_FOUND',
-                error: '文件夹不存在' 
-            });
-        }
-
-        if (!await isFolderOwnedByUser(folderId, req.user.username)) {
-            return res.status(403).json({ 
-                success: false, 
-                code: 'FOLDER_FORBIDDEN',
-                error: '无权访问' 
-            });
-        }
-
+        // 先获取文件记录
         const fileRecord = await FileModel.findById(fileId);
         
-        if (!fileRecord || fileRecord.folderId !== folderId) {
-            return res.status(404).json({ 
-                success: false, 
-                code: 'FILE_NOT_FOUND',
-                error: '文件不存在' 
-            });
+        if (!fileRecord) {
+            return sendError(res, 'FILE_NOT_FOUND');
+        }
+
+        // 使用文件实际所在的文件夹
+        const actualFolderId = fileRecord.folderId;
+        const folder = await FolderModel.findById(actualFolderId);
+        
+        if (!folder) {
+            return sendError(res, 'FOLDER_NOT_FOUND');
+        }
+
+        // 检查用户是否有权限访问该文件夹
+        if (!await isFolderOwnedByUser(actualFolderId, req.user.username)) {
+            return sendError(res, 'AUTH_FORBIDDEN');
         }
 
         const filePath = path.join(FILES_ROOT, folder.physicalPath, fileRecord.savedName);
         
         if (!await fs.pathExists(filePath)) {
-            return res.status(404).json({ 
-                success: false, 
-                code: 'FILE_PHYSICAL_NOT_FOUND',
-                error: '文件不存在' 
-            });
+            return sendError(res, 'FILE_NOT_FOUND');
         }
 
         res.set({

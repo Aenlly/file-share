@@ -19,6 +19,7 @@ const userRoutes = require('./routes/userRoutes');
 const folderRoutes = require('./routes/folderRoutes');
 const shareRoutes = require('./routes/shareRoutes');
 const publicShareRoutes = require('./routes/publicShareRoutes');
+const recycleBinRoutes = require('./routes/recycleBinRoutes');
 
 const app = express();
 
@@ -124,14 +125,16 @@ async function initializeApp() {
 
         // API路由
         app.use('/api/users', userRoutes);
+        app.use('/api/folders/trash', recycleBinRoutes);  // 必须在 folderRoutes 之前
         app.use('/api/folders', folderRoutes);
         app.use('/api/shares', shareRoutes);
         app.use('/api', publicShareRoutes);
 
         // 404处理
+        const { sendError } = require('./config/errorCodes');
         app.use((req, res) => {
             logger.warn(`404 Not Found: ${req.method} ${req.path}`);
-            res.status(404).json({ error: '接口不存在' });
+            sendError(res, 'RESOURCE_NOT_FOUND', '接口不存在');
         });
 
         // 错误处理中间件（必须在最后）

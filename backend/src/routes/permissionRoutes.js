@@ -1,10 +1,13 @@
-const express = require('express');
+﻿const express = require('express');
 const router = express.Router();
 const { authenticate } = require('../middleware/auth');
 const { requirePermission } = require('../middleware/permission');
 const { PERMISSIONS, PERMISSION_GROUPS, ROLE_PRESETS } = require('../config/permissions');
 const UserModel = require('../models/UserModel');
 const logger = require('../utils/logger');
+const { sendError } = require('../config/errorCodes');
+const { sendError } = require('../config/errorCodes');
+const { sendError } = require('../config/errorCodes');
 
 /**
  * 获取所有权限定义
@@ -30,7 +33,7 @@ router.get('/role-presets/:role', authenticate, requirePermission(PERMISSIONS.PE
         const permissions = ROLE_PRESETS[role];
         
         if (!permissions) {
-            return res.status(404).json({ error: '角色不存在' });
+            return sendError(res, 'RESOURCE_NOT_FOUND', '角色不存在');
         }
 
         res.json({ role, permissions });
@@ -50,13 +53,13 @@ router.get('/user/:userId', authenticate, async (req, res, next) => {
         if (req.user.id !== userId) {
             const hasPermission = await UserModel.hasPermission(req.user.id, PERMISSIONS.PERMISSION_VIEW);
             if (!hasPermission) {
-                return res.status(403).json({ error: '权限不足' });
+                return sendError(res, 'AUTH_FORBIDDEN');
             }
         }
 
         const user = await UserModel.findById(userId);
         if (!user) {
-            return res.status(404).json({ error: '用户不存在' });
+            return sendError(res, 'USER_NOT_FOUND');
         }
 
         res.json({
@@ -79,7 +82,7 @@ router.put('/user/:userId', authenticate, requirePermission(PERMISSIONS.PERMISSI
         const { permissions } = req.body;
 
         if (!Array.isArray(permissions)) {
-            return res.status(400).json({ error: '权限必须是数组' });
+            return sendError(res, 'PARAM_INVALID', '权限必须是数组');
         }
 
         // 验证权限是否有效
@@ -87,10 +90,7 @@ router.put('/user/:userId', authenticate, requirePermission(PERMISSIONS.PERMISSI
         const invalidPermissions = permissions.filter(p => !validPermissions.includes(p));
         
         if (invalidPermissions.length > 0) {
-            return res.status(400).json({ 
-                error: '包含无效权限',
-                invalid: invalidPermissions 
-            });
+            return sendError(res, 'PARAM_INVALID', `包含无效权限: ${invalidPermissions.join(', ')}`);
         }
 
         await UserModel.updatePermissions(userId, permissions);
@@ -114,7 +114,7 @@ router.post('/user/:userId/apply-role', authenticate, requirePermission(PERMISSI
 
         const permissions = ROLE_PRESETS[role];
         if (!permissions) {
-            return res.status(400).json({ error: '角色不存在' });
+            return sendError(res, 'PARAM_INVALID', '角色不存在');
         }
 
         await UserModel.updateRole(userId, role);
@@ -151,7 +151,7 @@ router.post('/check', authenticate, async (req, res, next) => {
                 }, {})
             };
         } else {
-            return res.status(400).json({ error: '请提供 permission 或 permissions 参数' });
+            return sendError(res, 'PARAM_MISSING', '请提供 permission 或 permissions 参数');
         }
 
         res.json(result);

@@ -57,12 +57,13 @@ function getDateString() {
 
 /**
  * 自定义日期+大小分片 Transport
+ * 日志文件命名格式: xxxxx-YYYY-MM-DD-N.log
  */
 class DailyRotateFileTransport extends winston.transports.File {
     constructor(options) {
         const dateStr = getDateString();
         const baseName = options.baseName || 'app';
-        const filename = path.join(logDir, `${dateStr}-${baseName}-0.log`);
+        const filename = path.join(logDir, `${baseName}-${dateStr}-0.log`);
         
         super({
             ...options,
@@ -90,7 +91,7 @@ class DailyRotateFileTransport extends winston.transports.File {
         
         // 找到当天最新的日志文件
         while (index < this.maxFiles) {
-            const filename = path.join(this.logDir, `${dateStr}-${this.baseName}-${index}.log`);
+            const filename = path.join(this.logDir, `${this.baseName}-${dateStr}-${index}.log`);
             if (fs.existsSync(filename)) {
                 const stats = fs.statSync(filename);
                 if (stats.size < this.maxSize) {
@@ -111,7 +112,7 @@ class DailyRotateFileTransport extends winston.transports.File {
         // 如果超过最大分片数，使用最后一个
         if (index >= this.maxFiles) {
             this.currentIndex = this.maxFiles - 1;
-            this.filename = path.join(this.logDir, `${dateStr}-${this.baseName}-${this.currentIndex}.log`);
+            this.filename = path.join(this.logDir, `${this.baseName}-${dateStr}-${this.currentIndex}.log`);
         }
         
         this.currentDate = dateStr;
@@ -127,7 +128,7 @@ class DailyRotateFileTransport extends winston.transports.File {
         if (dateStr !== this.currentDate) {
             this.currentDate = dateStr;
             this.currentIndex = 0;
-            this.filename = path.join(this.logDir, `${dateStr}-${this.baseName}-0.log`);
+            this.filename = path.join(this.logDir, `${this.baseName}-${dateStr}-0.log`);
             return;
         }
         
@@ -136,7 +137,7 @@ class DailyRotateFileTransport extends winston.transports.File {
             const stats = fs.statSync(this.filename);
             if (stats.size >= this.maxSize && this.currentIndex < this.maxFiles - 1) {
                 this.currentIndex++;
-                this.filename = path.join(this.logDir, `${dateStr}-${this.baseName}-${this.currentIndex}.log`);
+                this.filename = path.join(this.logDir, `${this.baseName}-${dateStr}-${this.currentIndex}.log`);
             }
         }
     }
@@ -221,8 +222,8 @@ function cleanupOldLogs() {
         const files = fs.readdirSync(logDir);
         
         files.forEach(file => {
-            // 匹配日志文件名格式: YYYY-MM-DD-xxx-N.log
-            const match = file.match(/^(\d{4}-\d{2}-\d{2})-\w+-\d+\.log$/);
+            // 匹配日志文件名格式: xxxxx-YYYY-MM-DD-N.log
+            const match = file.match(/^\w+-(\d{4}-\d{2}-\d{2})-\d+\.log$/);
             if (match) {
                 const fileDate = new Date(match[1]);
                 if (fileDate < cutoffDate) {

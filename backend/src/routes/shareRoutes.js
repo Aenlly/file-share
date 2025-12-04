@@ -6,6 +6,7 @@ const logger = require('../utils/logger');
 const ShareModel = require('../models/ShareModel');
 const FolderModel = require('../models/FolderModel');
 const ShareAccessLogModel = require('../models/ShareAccessLogModel');
+const { sendError } = require('../config/errorCodes');
 
 /**
  * 获取用户的所有分享
@@ -27,12 +28,12 @@ router.post('/', authenticate, async (req, res, next) => {
         const { folderId, expireInMs } = req.body;
 
         if (!folderId) {
-            return res.status(400).json({ error: '文件夹ID不能为空' });
+            return sendError(res, 'SHARE_INVALID_INPUT');
         }
 
         const folder = await FolderModel.findById(folderId);
         if (!folder || folder.owner !== req.user.username) {
-            return res.status(403).json({ error: '无权访问' });
+            return sendError(res, 'AUTH_FORBIDDEN');
         }
 
         const share = await ShareModel.create({
@@ -61,12 +62,12 @@ router.put('/:shareId', authenticate, async (req, res, next) => {
         const { expireInMs } = req.body;
 
         if (!expireInMs) {
-            return res.status(400).json({ error: '过期时间不能为空' });
+            return sendError(res, 'SHARE_INVALID_INPUT');
         }
 
         const share = await ShareModel.findById(shareId);
         if (!share || share.owner !== req.user.username) {
-            return res.status(403).json({ error: '无权修改' });
+            return sendError(res, 'AUTH_FORBIDDEN');
         }
 
         const updated = await ShareModel.updateExpireTime(shareId, expireInMs);
@@ -89,7 +90,7 @@ router.delete('/:shareId', authenticate, async (req, res, next) => {
 
         const share = await ShareModel.findById(shareId);
         if (!share || share.owner !== req.user.username) {
-            return res.status(403).json({ error: '无权删除' });
+            return sendError(res, 'AUTH_FORBIDDEN');
         }
 
         // 删除分享的访问日志
@@ -112,7 +113,7 @@ router.post('/batch/delete', authenticate, async (req, res, next) => {
         const { shareIds } = req.body;
 
         if (!Array.isArray(shareIds) || shareIds.length === 0) {
-            return res.status(400).json({ error: '分享ID列表不能为空' });
+            return sendError(res, 'SHARE_INVALID_INPUT');
         }
 
         const deletedIds = [];
@@ -156,11 +157,11 @@ router.post('/batch/extend', authenticate, async (req, res, next) => {
         const { shareIds, expireInMs } = req.body;
 
         if (!Array.isArray(shareIds) || shareIds.length === 0) {
-            return res.status(400).json({ error: '分享ID列表不能为空' });
+            return sendError(res, 'SHARE_INVALID_INPUT');
         }
 
         if (!expireInMs) {
-            return res.status(400).json({ error: '过期时间不能为空' });
+            return sendError(res, 'SHARE_INVALID_INPUT');
         }
 
         const updatedIds = [];
