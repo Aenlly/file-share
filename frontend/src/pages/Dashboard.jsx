@@ -32,7 +32,7 @@ const Dashboard = () => {
   const { user } = useAuthStore()
   const isAdmin = user?.role === 'admin'
 
-  // 获取个人统计数据
+  // 获取个人统计数据 - 定时刷新以显示实时数据
   const { data: stats, isLoading } = useQuery(
     ['userStats', user?.username],
     async () => {
@@ -41,11 +41,11 @@ const Dashboard = () => {
     },
     {
       enabled: !!user,
-      refetchInterval: 30000
+      refetchInterval: 30000 // 每30秒刷新一次
     }
   )
 
-  // 获取全局统计数据（仅管理员）
+  // 获取全局统计数据（仅管理员）- 定时刷新
   const { data: globalStats, isLoading: globalLoading } = useQuery(
     'globalStats',
     async () => {

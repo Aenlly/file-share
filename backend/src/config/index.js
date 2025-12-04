@@ -65,17 +65,24 @@ module.exports = {
     shareCodeLength: 6,
     
     // 日志配置
-    logLevel: process.env.LOG_LEVEL || 'info',
+    log: {
+        level: process.env.LOG_LEVEL || 'info',
+        dir: process.env.LOG_DIR || './logs',
+        maxSize: parseInt(process.env.LOG_MAX_SIZE) || 20 * 1024 * 1024, // 20MB
+        maxFiles: parseInt(process.env.LOG_MAX_FILES) || 10, // 每天最多10个分片
+        maxDays: parseInt(process.env.LOG_MAX_DAYS) || 30, // 保留30天
+    },
+    logLevel: process.env.LOG_LEVEL || 'info', // 兼容旧配置
     
-    // 安全配置
-    rateLimitWindowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS) || 900000, // 15分钟
-    rateLimitMaxRequests: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS) || (nodeEnv === 'development' ? 1000 : 100),
+    // 安全配置 - 类似 Sentinel 的限流策略
+    rateLimitWindowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS) || 1000, // 1秒
+    rateLimitMaxRequests: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS) || 5, // 每秒5次
     
     // CORS配置
     corsOrigin: process.env.CORS_ORIGIN || 'http://localhost:3001',
     
     // 分片上传配置
-    chunkSize: 200 * 1024, // 200KB
+    chunkSize: parseInt(process.env.CHUNK_SIZE) || 5 * 1024 * 1024, // 默认5MB
     
     // 缓存配置
     previewCacheMaxAge: 3600, // 1小时

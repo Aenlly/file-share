@@ -172,9 +172,13 @@ const FolderManagement = () => {
     },
     {
       title: '创建时间',
-      dataIndex: 'id',
+      dataIndex: 'createdAt',
       key: 'createTime',
-      render: (id) => dayjs(id).format('YYYY-MM-DD HH:mm:ss')
+      render: (createdAt, record) => {
+        // 优先使用 createdAt 字段，如果不存在则使用 id（兼容旧数据）
+        const timestamp = createdAt || record.id
+        return dayjs(timestamp).format('YYYY-MM-DD HH:mm:ss')
+      }
     },
     {
       title: '操作',

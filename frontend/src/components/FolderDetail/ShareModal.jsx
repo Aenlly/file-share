@@ -1,11 +1,15 @@
 import { useState } from 'react'
 import { Modal, Button, Input, Typography, message } from 'antd'
+import { useQueryClient } from 'react-query'
+import { useAuthStore } from '../../stores/authStore'
 import dayjs from 'dayjs'
 import api from '../../utils/api'
 
 const { Text } = Typography
 
 const ShareModal = ({ visible, folderId, onClose }) => {
+  const queryClient = useQueryClient()
+  const { user } = useAuthStore()
   const [shareCode, setShareCode] = useState('')
   const [shareExpiration, setShareExpiration] = useState(7)
   const [isSharing, setIsSharing] = useState(false)
@@ -28,6 +32,10 @@ const ShareModal = ({ visible, folderId, onClose }) => {
       navigator.clipboard.writeText(shareText)
         .then(() => message.success('分享链接生成成功并已复制到剪贴板'))
         .catch(() => message.success('分享链接生成成功，但复制失败'))
+      
+      // 刷新统计数据
+      queryClient.invalidateQueries(['userStats', user?.username])
+      queryClient.invalidateQueries('globalStats')
     } catch (error) {
       message.error('生成分享链接失败')
       console.error('生成分享链接失败:', error)
